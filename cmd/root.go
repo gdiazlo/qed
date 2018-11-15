@@ -57,6 +57,6 @@ func NewRootCommand() *cobra.Command {
 
 	cmd.AddCommand(newStartCommand())
 	cmd.AddCommand(newClientCommand())
-
+	cmd.AddCommand(newGNodeStartCommand())
 	return cmd
 }

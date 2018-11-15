@@ -49,7 +49,7 @@ type logger interface {
 }
 
 // The default logger is an log.ERROR level.
-var std logger = newError(os.Stdout, "Qed: ", log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
+var std logger = newError(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
 
 // To allow mocking we require a switchable variable.
 var osExit = os.Exit
@@ -130,13 +130,13 @@ func SetLogger(namespace, level string) {
 	case SILENT:
 		std = newSilent()
 	case ERROR:
-		std = newError(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
+		std = newError(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lshortfile)
 	case INFO:
-		std = newInfo(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
+		std = newInfo(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	case DEBUG:
-		std = newDebug(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
+		std = newDebug(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	default:
-		l := newInfo(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
+		l := newInfo(os.Stdout, prefix, log.Ldate|log.Ltime|log.Lshortfile)
 		l.Infof("Incorrect level of verbosity (%v) fallback to log.INFO", level)
 		std = l
 	}
