@@ -16,11 +16,6 @@
 
 package hyperbatch
 
-import (
-	"encoding/binary"
-	"fmt"
-)
-
 type Operation int
 
 func (op Operation) String() string {
@@ -43,49 +38,6 @@ const (
 	Leaf
 	Shortcut
 )
-
-type Node struct {
-	ibatch    uint
-	height    uint
-	base      [32]byte
-	index     [32]byte
-	value     [32]byte
-	key       [32]byte
-	hash      [32]byte
-	donotsave bool
-	shortcut  bool
-	isNew     bool
-}
-
-func (n Node) String() string {
-	return fmt.Sprintf("(s %v n %v i %v h %v f %v b %v x %v k %v v %v d %v)", n.shortcut, n.isNew, n.ibatch, n.height, n.hash[0], n.base[0], n.index[0], n.key[0], n.value[0], n.donotsave)
-}
-
-func (n Node) Equal(o Node) bool {
-	return n.hash == o.hash && n.key == o.key && n.value == o.value
-}
-
-func (n Node) Key() (key [40]byte) {
-	copy(key[:], n.base[:])
-	binary.LittleEndian.PutUint64(key[32:], uint64(n.height))
-	return
-}
-
-func (src Node) Dir(dst Node) Operation {
-	bit := src.height - 1
-	if dst.key[bit>>3]&(1<<(bit&7)) == 0 {
-		return Left
-	}
-
-	return Right
-}
-
-func NewNode(key []byte, value uint64) Node {
-	var n Node
-	copy(n.key[:], key)
-	binary.LittleEndian.PutUint64(n.value[:], value)
-	return n
-}
 
 func Pushdown(curr, dest Node) (Node, Node) {
 	dest.hash = curr.hash
@@ -110,56 +62,56 @@ type Tree interface {
 	Root(Node, Node) Node
 }
 
-func Traverse(subtree Tree, current, destination Node, executor Visitor, carry bool) Node {
+func Traverse(tree Tree, cur, dst Node, executor Visitor, carry bool) Node {
 	var leftChild, rightChild Node
-	var tr, tl Tree
+	var rightTree, leftTree Tree
 
-	if subtree.IsLeaf(current) {
-		current = executor.Visit(subtree, Leaf, current, destination)
-		subtree.Set(current)
-		return current
+	if tree.IsLeaf(cur) {
+		cur = executor.Visit(tree, Leaf, cur, dst)
+		tree.Set(cur)
+		return cur
 	}
 
-	dir := current.Dir(destination)
+	dir := cur.Dir(dst)
 
-	tr, rightChild = subtree.RightChild(dir, current, destination)
-	tl, leftChild = subtree.LeftChild(dir, current, destination)
+	rightTree, rightChild = tree.RightChild(dir, cur, dst)
+	leftTree, leftChild = tree.LeftChild(dir, cur, dst)
 
-	if current.isNew && rightChild.isNew && leftChild.isNew {
+	if cur.isNew && rightChild.isNew && leftChild.isNew {
 		carry = false
 	}
 
-	if current.shortcut && current.Equal(destination) && !carry {
-		current = executor.Visit(subtree, Shortcut, current, destination)
-		subtree.Set(current)
-		return current
+	if cur.shortcut && cur.Equal(dst) && !carry {
+		cur = executor.Visit(tree, Shortcut, cur, dst)
+		tree.Set(cur)
+		return cur
 	}
 
-	if current.shortcut {
-		pDir := current.Dir(current)
+	if cur.shortcut {
+		pDir := cur.Dir(cur)
 		switch {
 		case pDir == Left && leftChild.isNew:
-			current, leftChild = Pushdown(current, leftChild)
-			tl.Set(leftChild)
-			subtree.Reset(current)
-			return Traverse(subtree, current, destination, executor, true)
+			cur, leftChild = Pushdown(cur, leftChild)
+			leftTree.Set(leftChild)
+			tree.Reset(cur)
+			return Traverse(tree, cur, dst, executor, true)
 		case pDir == Right && rightChild.isNew:
-			current, rightChild = Pushdown(current, rightChild)
-			tr.Set(rightChild)
-			subtree.Reset(current)
-			return Traverse(subtree, current, destination, executor, true)
+			cur, rightChild = Pushdown(cur, rightChild)
+			rightTree.Set(rightChild)
+			tree.Reset(cur)
+			return Traverse(tree, cur, dst, executor, true)
 		}
 
 	}
 
 	switch dir {
 	case Left:
-		leftChild = Traverse(tl, leftChild, destination, executor, carry)
+		leftChild = Traverse(leftTree, leftChild, dst, executor, carry)
 	case Right:
-		rightChild = Traverse(tr, rightChild, destination, executor, carry)
+		rightChild = Traverse(rightTree, rightChild, dst, executor, carry)
 	}
 
-	current = executor.Visit(subtree, dir, current, leftChild, rightChild)
-	subtree.Set(current)
-	return current
+	cur = executor.Visit(tree, dir, cur, leftChild, rightChild)
+	tree.Set(cur)
+	return cur
 }
