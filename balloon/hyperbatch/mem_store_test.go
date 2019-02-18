@@ -1,0 +1,42 @@
+/*
+   Copyright 2018 Banco Bilbao Vizcaya Argentaria, S.A.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+package hyperbatch
+
+import (
+	"testing"
+
+	assert "github.com/stretchr/testify/require"
+)
+
+func TestMarshal(t *testing.T) {
+
+	a := NewMemStore(4)
+	b := NewMemStore(4)
+	marshaled := a.Marshal()
+	b.Unmarshal(marshaled)
+	assert.Equal(t, a, b, "Fix marshalling code")
+
+	a = NewMemStore(4)
+	b = NewMemStore(4)
+	a.Set(NodeRecord, 0, [32]byte{0x1})
+	a.Set(NodeRecord, 1, [32]byte{0x2})
+	a.Set(ShortcutRecord, 2, [32]byte{0x2})
+	marshaled = a.Marshal()
+	b.Unmarshal(marshaled)
+	b.writes = 3
+	assert.Equal(t, a, b, "Fix marshalling code 2")
+}
