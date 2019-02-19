@@ -32,9 +32,9 @@ func TestMarshal(t *testing.T) {
 
 	a = NewMemStore(4)
 	b = NewMemStore(4)
-	a.Set(NodeRecord, 0, [32]byte{0x1})
-	a.Set(NodeRecord, 1, [32]byte{0x2})
-	a.Set(ShortcutRecord, 2, [32]byte{0x2})
+	a.Set(NodeRecord, 0, []byte{0x1})
+	a.Set(NodeRecord, 1, []byte{0x2})
+	a.Set(ShortcutRecord, 2, []byte{0x2})
 	marshaled = a.Marshal()
 	b.Unmarshal(marshaled)
 	b.writes = 3

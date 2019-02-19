@@ -17,6 +17,7 @@
 package hyperbatch
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -26,9 +27,9 @@ type Node struct {
 	height    uint
 	base      [32]byte
 	index     [32]byte
-	value     [32]byte
-	key       [32]byte
-	hash      [32]byte
+	value     []byte
+	key       []byte
+	hash      []byte
 	donotsave bool
 	shortcut  bool
 	isNew     bool
@@ -39,7 +40,7 @@ func (n Node) String() string {
 }
 
 func (n Node) Equal(o Node) bool {
-	return n.hash == o.hash && n.key == o.key && n.value == o.value
+	return bytes.Compare(n.hash, o.hash) == 0 && bytes.Compare(n.key, o.key) == 0 && bytes.Compare(n.value, o.value) == 0
 }
 
 func (n Node) Key() (k Key) {
@@ -59,7 +60,8 @@ func (src Node) Dir(dst Node) Operation {
 
 func NewNode(key []byte, value uint64) Node {
 	var n Node
-	copy(n.key[:], key)
+	n.key = key
+	n.value = make([]byte, 8)
 	binary.LittleEndian.PutUint64(n.value[:], value)
 	return n
 }

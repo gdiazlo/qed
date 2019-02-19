@@ -17,8 +17,8 @@
 package hyperbatch
 
 type Store interface {
-	Set(r Record, i uint, val [32]byte)
-	Get(i uint) (r Record, val [32]byte)
+	Set(r Record, i uint, val []byte)
+	Get(i uint) (r Record, val []byte)
 	Unset(i uint)
 	Len() int
 	Marshal() []byte

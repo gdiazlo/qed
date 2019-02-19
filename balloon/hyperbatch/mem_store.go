@@ -39,24 +39,24 @@ func (c *MemStore) Len() int {
 	return len(c.mem)
 }
 
-func (c *MemStore) Get(i uint) (r Record, val [32]byte) {
+func (c *MemStore) Get(i uint) (r Record, val []byte) {
 	c.reads++
 	r = Record(c.mem[i][0])
 	switch r {
 	case EmptyRecord:
 		return
 	case NodeRecord:
-		copy(val[:], c.mem[i][1:])
+		val = c.mem[i][1:]
 	case ShortcutRecord:
-		copy(val[:], c.mem[i][1:])
+		val = c.mem[i][1:]
 	case ShortcutValRecord:
-		copy(val[:], c.mem[i][1:])
+		val = c.mem[i][1:]
 	}
 
 	return
 }
 
-func (c *MemStore) Set(r Record, i uint, val [32]byte) {
+func (c *MemStore) Set(r Record, i uint, val []byte) {
 	c.writes++
 	c.mem[i][0] = byte(r)
 	copy(c.mem[i][1:], val[:])
