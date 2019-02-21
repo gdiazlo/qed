@@ -49,21 +49,24 @@ func (s Subtree) Id() string {
 	return s.id
 }
 
+var ErrNotFound error = fmt.Errorf("subtree.Get(): Node not found")
+var ErrShortcutVal error = fmt.Errorf("subtree.Get(): Shortcut value here, when access directly its an empty node")
+
 func (s *Subtree) Get(n Node) (Node, error) {
 	r, v := s.batch.Get(n.ibatch)
 	switch r {
 	case EmptyRecord:
-		return n, fmt.Errorf("subtree.Get(): Node not found")
+		return n, ErrNotFound
 	case ShortcutRecord:
-		n.hash = v
+		copy(n.hash[:], v[:])
 		n.shortcut = true
 		_, n.key = s.batch.Get(2*n.ibatch + 1)
 		_, n.value = s.batch.Get(2*n.ibatch + 2)
 	case NodeRecord:
-		n.hash = v
+		copy(n.hash[:], v[:])
 	case ShortcutValRecord:
 		n.isNew = true
-		return n, fmt.Errorf("subtree.Get(): Shortcut value here, when access directly its an empty node")
+		return n, ErrShortcutVal
 	}
 
 	return n, nil
@@ -74,19 +77,18 @@ func (s *Subtree) Reset(n Node) {
 }
 
 func (s *Subtree) Set(n Node) {
-
 	if n.donotsave {
 		s.batch.Unset(n.ibatch)
 		return
 	}
 
 	if n.shortcut {
-		s.batch.Set(ShortcutRecord, n.ibatch, n.hash)
+		s.batch.Set(ShortcutRecord, n.ibatch, n.hash[:])
 		s.batch.Set(ShortcutValRecord, 2*n.ibatch+1, n.key)
 		s.batch.Set(ShortcutValRecord, 2*n.ibatch+2, n.value)
 		return
 	}
-	s.batch.Set(NodeRecord, n.ibatch, n.hash)
+	s.batch.Set(NodeRecord, n.ibatch, n.hash[:])
 }
 
 func (s *Subtree) LoadNode(isShortcut bool, n, d Node) Node {

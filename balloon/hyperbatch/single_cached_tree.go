@@ -28,7 +28,7 @@ func newSingleCachedNextTreeFn(counter *uint, batchHeight uint, dbb Batches, cac
 
 	next = func(n Node) Tree {
 		if n.height > cacheLevel {
-			return NewSubtree("cache 0", cache, dht, batchHeight, false, next)
+			return NewSubtree("cache", cache, dht, batchHeight, false, next)
 		}
 		if n.height%batchHeight == 0 {
 			var mem *MemStore
@@ -47,7 +47,7 @@ func newSingleCachedNextTreeFn(counter *uint, batchHeight uint, dbb Batches, cac
 					}
 				}
 			}
-			return NewSubtree(fmt.Sprintf("batch %d", len(dbb)-1), mem, dht, batchHeight, true, next)
+			return NewSubtree("batch", mem, dht, batchHeight, true, next)
 		}
 		return nil
 

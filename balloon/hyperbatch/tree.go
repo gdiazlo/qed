@@ -16,6 +16,11 @@
 
 package hyperbatch
 
+import (
+	"github.com/bbva/qed/hashing"
+	"github.com/bbva/qed/storage"
+)
+
 type Operation int
 
 func (op Operation) String() string {
@@ -39,17 +44,6 @@ const (
 	Shortcut
 )
 
-func Pushdown(curr, dest Node) (Node, Node) {
-	dest.hash = curr.hash
-	dest.key = curr.key
-	dest.value = curr.value
-	dest.shortcut = true
-	curr.shortcut = false
-	dest.donotsave = false
-	curr.donotsave = false
-	return curr, dest
-}
-
 type Tree interface {
 	Id() string
 	LeftChild(Operation, Node, Node) (Tree, Node)
@@ -62,56 +56,39 @@ type Tree interface {
 	Root(Node, Node) Node
 }
 
-func Traverse(tree Tree, cur, dst Node, executor Visitor, carry bool) Node {
-	var leftChild, rightChild Node
-	var rightTree, leftTree Tree
+type SMT struct {
+	next    NextTreeFn
+	persist PersistFn
+	tree    Tree
+	root    Node
+	hasher  hashing.Hasher
+}
 
-	if tree.IsLeaf(cur) {
-		cur = executor.Visit(tree, Leaf, cur, dst)
-		tree.Set(cur)
-		return cur
-	}
+func NewCachedSMT(batchHeight, cacheHeight uint, db, cache storage.Store, hasher hashing.Hasher) (s SMT) {
+	batches := make(Batches)
+	cached := make(Batches)
+	dht := genDHT(hasher)
 
-	dir := cur.Dir(dst)
+	s.next = newCachedNextTreeFn(batchHeight, cacheHeight, batches, cached, db, cache, dht)
+	s.persist = newCachedPersistFn(batches, cached, db, cache)
 
-	rightTree, rightChild = tree.RightChild(dir, cur, dst)
-	leftTree, leftChild = tree.LeftChild(dir, cur, dst)
+	s.root = NewNode([]byte{}, 0)
+	s.root.index[0] = 0x80
+	s.root.height = 8
 
-	if cur.isNew && rightChild.isNew && leftChild.isNew {
-		carry = false
-	}
+	s.tree = s.next(s.root)
+	s.hasher = hasher
 
-	if cur.shortcut && cur.Equal(dst) && !carry {
-		cur = executor.Visit(tree, Shortcut, cur, dst)
-		tree.Set(cur)
-		return cur
-	}
+	return s
+}
 
-	if cur.shortcut {
-		pDir := cur.Dir(cur)
-		switch {
-		case pDir == Left && leftChild.isNew:
-			cur, leftChild = Pushdown(cur, leftChild)
-			leftTree.Set(leftChild)
-			tree.Reset(cur)
-			return Traverse(tree, cur, dst, executor, true)
-		case pDir == Right && rightChild.isNew:
-			cur, rightChild = Pushdown(cur, rightChild)
-			rightTree.Set(rightChild)
-			tree.Reset(cur)
-			return Traverse(tree, cur, dst, executor, true)
-		}
+func (s SMT) Insert(key []byte, value uint64) []byte {
+	dst := newDest(s.hasher, key, value)
+	n := Traverse(s.tree, s.tree.Root(s.root, dst), dst, &Compute{h: s.hasher}, false)
+	return n.hash[:]
+}
 
-	}
+func (s SMT) Prove() [][]byte {
 
-	switch dir {
-	case Left:
-		leftChild = Traverse(leftTree, leftChild, dst, executor, carry)
-	case Right:
-		rightChild = Traverse(rightTree, rightChild, dst, executor, carry)
-	}
-
-	cur = executor.Visit(tree, dir, cur, leftChild, rightChild)
-	tree.Set(cur)
-	return cur
+	return nil
 }

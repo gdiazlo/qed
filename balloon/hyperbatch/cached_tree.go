@@ -18,11 +18,12 @@ package hyperbatch
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/bbva/qed/storage"
 )
 
-func newCachedNextTreeFn(counter *uint, batchHeight uint, dbb, cached Batches, dbs, cache storage.Store, cacheLevel uint, dht [][]byte) NextTreeFn {
+func newCachedNextTreeFn(batchHeight, cacheHeight uint, dbb, cached Batches, dbs, cache storage.Store, dht [][]byte) NextTreeFn {
 
 	var next NextTreeFn
 	var store storage.Store
@@ -34,19 +35,18 @@ func newCachedNextTreeFn(counter *uint, batchHeight uint, dbb, cached Batches, d
 		store = dbs
 		batches = dbb
 		shortcuts = true
-		region = "db"
-		if n.height > cacheLevel {
+		region = "db "
+		if n.height > cacheHeight {
 			store = cache
 			batches = cached
 			shortcuts = false
-			region = "cache"
+			region = "cache "
 		}
 		if n.height%batchHeight == 0 {
 			var mem *MemStore
 			key := n.Key()
 			mem, ok := batches[key]
 			if !ok {
-				(*counter)++
 				batches[key] = NewMemStore(batchHeight)
 				mem = batches[key]
 				kv, err := store.Get(storage.IndexPrefix, key[:])
@@ -58,7 +58,7 @@ func newCachedNextTreeFn(counter *uint, batchHeight uint, dbb, cached Batches, d
 					}
 				}
 			}
-			return NewSubtree(fmt.Sprintf("%s %d", region, len(batches)-1), mem, dht, batchHeight, shortcuts, next)
+			return NewSubtree(region+strconv.FormatUint(uint64(len(batches)-1), 10), mem, dht, batchHeight, shortcuts, next)
 		}
 		return nil
 

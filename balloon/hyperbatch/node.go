@@ -29,7 +29,7 @@ type Node struct {
 	index     [32]byte
 	value     []byte
 	key       []byte
-	hash      []byte
+	hash      [32]byte
 	donotsave bool
 	shortcut  bool
 	isNew     bool
@@ -40,7 +40,7 @@ func (n Node) String() string {
 }
 
 func (n Node) Equal(o Node) bool {
-	return bytes.Compare(n.hash, o.hash) == 0 && bytes.Compare(n.key, o.key) == 0 && bytes.Compare(n.value, o.value) == 0
+	return bytes.Compare(n.hash[:], o.hash[:]) == 0 && bytes.Compare(n.key, o.key) == 0 && bytes.Compare(n.value, o.value) == 0
 }
 
 func (n Node) Key() (k Key) {

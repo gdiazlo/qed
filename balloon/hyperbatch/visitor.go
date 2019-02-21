@@ -40,6 +40,21 @@ func (c Compute) Visit(t Tree, d Operation, n Node, child ...Node) Node {
 	return n
 }
 
+type Audit struct {
+	path [][32]byte
+	c    Compute
+}
+
+func (a *Audit) Visit(t Tree, d Operation, n Node, child ...Node) Node {
+	n = a.c.Visit(t, d, n, child...)
+	a.path = append(a.path, n.hash)
+	return n
+}
+
+func (a Audit) Path() [][32]byte {
+	return a.path
+}
+
 type position struct {
 	ibatch, height uint
 }
@@ -68,9 +83,9 @@ func (p *Tester) Visit(t Tree, op Operation, n Node, child ...Node) Node {
 		nid := fmt.Sprintf("%d-%d", n.ibatch, n.height)
 		c0id := fmt.Sprintf("%d-%d", c0.ibatch, c0.height)
 		c1id := fmt.Sprintf("%d-%d", c1.ibatch, c1.height)
-		p.graph = append(p.graph, fmt.Sprintf(nf, nid, n.hash[:1], n.base[:1], n.index[:1], nid))
-		p.graph = append(p.graph, fmt.Sprintf(nf, c0id, c0.hash[:1], c0.base[:1], c0.index[:1], c0id))
-		p.graph = append(p.graph, fmt.Sprintf(nf, c1id, c1.hash[:1], c1.base[:1], c1.index[:1], c1id))
+		p.graph = append(p.graph, fmt.Sprintf(nf, nid, n.hash, n.base, n.index, nid))
+		p.graph = append(p.graph, fmt.Sprintf(nf, c0id, c0.hash, c0.base, c0.index, c0id))
+		p.graph = append(p.graph, fmt.Sprintf(nf, c1id, c1.hash, c1.base, c1.index, c1id))
 		p.graph = append(p.graph, fmt.Sprintf(cf, nid, c0id, t.Id()))
 		p.graph = append(p.graph, fmt.Sprintf(cf, nid, c1id, t.Id()))
 	}

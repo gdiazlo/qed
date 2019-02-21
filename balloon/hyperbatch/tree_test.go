@@ -45,7 +45,7 @@ type mut struct {
 
 func newDest(hasher hashing.Hasher, digest []byte, value uint64) Node {
 	dst := NewNode(digest, value)
-	dst.hash = hasher.Do(dst.value[:])[:]
+	copy(dst.hash[:], hasher.Do(dst.value[:])[:])
 	// dst.index[0] = 0x80
 	return dst
 }
@@ -188,7 +188,6 @@ func TestMultiBatchDiskTree(t *testing.T) {
 }
 
 func TestCachedDiskTree(t *testing.T) {
-
 	batches := make(Batches)
 	cached := make(Batches)
 
@@ -198,7 +197,7 @@ func TestCachedDiskTree(t *testing.T) {
 	defer closeF()
 	cache := bplus.NewBPlusTreeStore()
 
-	next := newCachedNextTreeFn(nil, 4, batches, cached, db, cache, 4, dht)
+	next := newCachedNextTreeFn(4, 4, batches, cached, db, cache, dht)
 	persist := newCachedPersistFn(batches, cached, db, cache)
 
 	testCases := [][]byte{
@@ -293,8 +292,7 @@ func BenchmarkAdd(b *testing.B) {
 	db, closeF := storage.OpenBadgerStore(b, "/var/tmp/byperbatch")
 	defer closeF()
 	cache := bplus.NewBPlusTreeStore()
-	counter := uint(0)
-	next := newCachedNextTreeFn(&counter, 4, batches, cached, db, cache, 232, dht)
+	next := newCachedNextTreeFn(4, 232, batches, cached, db, cache, dht)
 	persist := newCachedPersistFn(batches, cached, db, cache)
 
 	hasher := hashing.NewSha256Hasher()
@@ -315,12 +313,11 @@ func BenchmarkAdd(b *testing.B) {
 		tree := next(root)
 		root = tree.Root(root, dst)
 		Traverse(tree, root, dst, executor, false)
-		counter = 0
 		persist()
 	}
 }
 
-func BenchmarkAddSC(b *testing.B) {
+func BenchmarkSC(b *testing.B) {
 
 	batches := make(Batches)
 	cache := NewMemStore(24)
@@ -345,7 +342,7 @@ func BenchmarkAddSC(b *testing.B) {
 	root.height = 256
 
 	b.ResetTimer()
-	b.N = 100000
+	b.N = 1000000
 	for i := 0; i < b.N; i++ {
 		key := hasher.Do(rand.Bytes(32))
 		dst := newDest(hasher, key, uint64(i))
