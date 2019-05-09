@@ -18,6 +18,7 @@ package cache
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -28,9 +29,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type BatchLocator interface {
-	Seek(key []byte) uint64
-	BatchSize() uint64
+type Seeker interface {
+	Seek([]byte) (uint64, error)
 }
 
 type MmapCache struct {
@@ -38,19 +38,21 @@ type MmapCache struct {
 	fd         *os.File // file descriptor for the memory-mapped file
 	fmap       []byte
 	entryCount int
+	bucketSize uint64
 	// This is a lock on the log file. It guards the fd’s value, the file’s
 	// existence and the file’s memory map.
 	//
 	// Use shared ownership when reading/writing the file or memory map, use
 	// exclusive ownership to open/close the descriptor, unmap or remove the file.
-	lock    sync.RWMutex
-	locator BatchLocator
+	lock sync.RWMutex
+	Seeker
 }
 
-func NewMmapCache(path string, size int64, locator BatchLocator) (*MmapCache, error) {
+func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*MmapCache, error) {
 	c := &MmapCache{
-		path:    path,
-		locator: locator,
+		path:       path,
+		bucketSize: bucketSize,
+		Seeker:     seek,
 	}
 	filePath := path + "/hypercache.dat"
 	flags := os.O_RDWR | os.O_CREATE | os.O_EXCL
@@ -59,7 +61,7 @@ func NewMmapCache(path string, size int64, locator BatchLocator) (*MmapCache, er
 	if err != nil {
 		return nil, err
 	}
-	if err = c.mmap(size); err != nil {
+	if err = c.mmap(int64(numBuckets * bucketSize)); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -81,7 +83,11 @@ func (c *MmapCache) Close() error {
 func (c MmapCache) Get(key []byte) ([]byte, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	if value := c.fmap[c.locator.Seek(key):c.locator.BatchSize()]; string(value[0:4]) != "" {
+	offset, err := c.Seek(key)
+	if err != nil {
+		panic(fmt.Sprintf("You are trying to seek for the offset of a non-cacheable key: %d", key))
+	}
+	if value := c.fmap[offset:c.bucketSize]; string(value[0:4]) != "" {
 		return value, true
 	}
 	return nil, false
@@ -90,10 +96,14 @@ func (c MmapCache) Get(key []byte) ([]byte, bool) {
 func (c *MmapCache) Put(key []byte, value []byte) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if value := c.fmap[c.locator.Seek(key):c.locator.BatchSize()]; string(value[0:4]) == "" {
+	offset, err := c.Seek(key)
+	if err != nil {
+		panic(fmt.Sprintf("You are trying to seek for the offset of a non-cacheable key: %d", key))
+	}
+	if value := c.fmap[offset:c.bucketSize]; string(value[0:4]) == "" {
 		c.entryCount++
 	}
-	copy(c.fmap[c.locator.Seek(key):], value)
+	copy(c.fmap[offset:], value)
 }
 
 func (c *MmapCache) Fill(r storage.KVPairReader) (err error) {
