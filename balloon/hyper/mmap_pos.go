@@ -53,8 +53,10 @@ func NewBatchSeeker(treeHeight, batchHeight uint16, batchSize uint64, batchLevel
 func (l BatchSeeker) Seek(key []byte) (uint64, error) {
 	height := util.BytesAsUint16(key[0:2])
 	index := key[2:]
-	iPos := uint64(bits.Reverse32(binary.BigEndian.Uint32(index[0:4]))) - 1
+
+	iPos := uint64(bits.Reverse32(binary.BigEndian.Uint32(index[0:4])))
 	level := ((l.treeHeight - height) / l.batchHeight)
 	iPos += l.offsets[level]
+
 	return iPos * l.batchSize, nil
 }
