@@ -19,6 +19,7 @@ package balloon
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"sync"
 
 	"github.com/bbva/qed/balloon/cache"
@@ -50,6 +51,10 @@ func NewBalloon(store storage.Store, hasherF func() hashing.Hasher) (*Balloon, e
 	historyTree := history.NewHistoryTree(hasherF, store, 300)
 
 	seeker := hyper.NewBatchSeeker(hasher.Len(), 4, 31*31, 6)
+	path, err := ioutil.TempDir("", "ballon-hypercache")
+	if err != nil {
+		return nil, err
+	}
 	cache, err := cache.NewMmapCache(path, 1118481, 31*31, seeker)
 
 	if err != nil {

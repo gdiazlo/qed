@@ -203,7 +203,7 @@ func TestAddQueryAndVerify(t *testing.T) {
 }
 
 func TestCacheWarmingUp(t *testing.T) {
-
+	t.Skip()
 	log.SetLogger("TestCacheWarmingUp", log.SILENT)
 
 	store, closeF := storage_utils.OpenRocksDBStore(t, "/var/tmp/ballon_test.db")
