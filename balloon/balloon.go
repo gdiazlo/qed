@@ -45,9 +45,18 @@ type Balloon struct {
 
 func NewBalloon(store storage.Store, hasherF func() hashing.Hasher) (*Balloon, error) {
 
+	hasher := hasherF()
 	// create trees
 	historyTree := history.NewHistoryTree(hasherF, store, 300)
-	hyperTree := hyper.NewHyperTree(hasherF, store, cache.NewFreeCache(hyper.CacheSize))
+
+	seeker := hyper.NewBatchSeeker(hasher.Len(), 4, 31*31, 6)
+	cache, err := cache.NewMmapCache(path, 1118481, 31*31, seeker)
+
+	if err != nil {
+		return nil, err
+	}
+
+	hyperTree := hyper.NewHyperTree(hasherF, store, cache)
 
 	balloon := &Balloon{
 		version:     0,
