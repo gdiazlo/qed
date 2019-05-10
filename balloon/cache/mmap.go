@@ -54,6 +54,9 @@ func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*Mma
 		bucketSize: bucketSize,
 		Seeker:     seek,
 	}
+	/* c.fmap = make([]byte, numBuckets*bucketSize)
+	return c, nil */
+
 	filePath := path + "/hypercache.dat"
 	flags := os.O_RDWR | os.O_CREATE | os.O_EXCL
 	var err error
@@ -61,6 +64,11 @@ func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*Mma
 	if err != nil {
 		return nil, err
 	}
+
+	if err := c.fd.Truncate(int64(numBuckets * bucketSize)); err != nil {
+		return nil, err
+	}
+
 	if err = c.mmap(int64(numBuckets * bucketSize)); err != nil {
 		return nil, err
 	}
@@ -68,8 +76,6 @@ func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*Mma
 }
 
 func (c *MmapCache) Close() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	var err error
 	if munmapErr := c.munmap(); munmapErr != nil {
 		err = munmapErr
@@ -81,34 +87,33 @@ func (c *MmapCache) Close() error {
 }
 
 func (c MmapCache) Get(key []byte) ([]byte, bool) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
 	offset, err := c.Seek(key)
 	if err != nil {
 		panic(fmt.Sprintf("You are trying to seek for the offset of a non-cacheable key: %d", key))
 	}
-	if value := c.fmap[offset:c.bucketSize]; string(value[0:4]) != "" {
+	var value []byte
+	if value = c.fmap[offset : offset+c.bucketSize]; bytes.Count(value, []byte{0x0}) != len(value) {
 		return value, true
 	}
+
 	return nil, false
 }
 
 func (c *MmapCache) Put(key []byte, value []byte) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	block := value
+
 	offset, err := c.Seek(key)
 	if err != nil {
 		panic(fmt.Sprintf("You are trying to seek for the offset of a non-cacheable key: %d", key))
 	}
-	if value := c.fmap[offset:c.bucketSize]; string(value[0:4]) == "" {
+	if prev := c.fmap[offset : offset+c.bucketSize]; bytes.Count(prev, []byte{0x0}) == len(block) {
 		c.entryCount++
 	}
-	copy(c.fmap[offset:], value)
+	copy(c.fmap[offset:], block)
+	unix.Msync(c.fmap, unix.MS_ASYNC)
 }
 
 func (c *MmapCache) Fill(r storage.KVPairReader) (err error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	return nil
 }
 
@@ -121,7 +126,7 @@ func (c MmapCache) Equal(o *MmapCache) bool {
 }
 
 func (c *MmapCache) mmap(size int64) (err error) {
-	c.fmap, err = Mmap(c.fd, false, size)
+	c.fmap, err = Mmap(c.fd, true, size)
 	if err == nil {
 		err = Madvise(c.fmap, false) // disable readahead
 	}
@@ -143,7 +148,7 @@ func Mmap(fd *os.File, writable bool, size int64) ([]byte, error) {
 	if writable {
 		mtype |= unix.PROT_WRITE
 	}
-	return unix.Mmap(int(fd.Fd()), 0, int(size), mtype, unix.MAP_SHARED)
+	return unix.Mmap(int(fd.Fd()), 0, int(size), mtype, unix.MAP_PRIVATE)
 }
 
 // Munmap unmaps a previously mapped slice.
