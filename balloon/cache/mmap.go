@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"syscall"
-	"unsafe"
 
 	"github.com/bbva/qed/storage"
 	"github.com/pkg/errors"
@@ -54,8 +52,6 @@ func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*Mma
 		bucketSize: bucketSize,
 		Seeker:     seek,
 	}
-	/* c.fmap = make([]byte, numBuckets*bucketSize)
-	return c, nil */
 
 	filePath := path + "/hypercache.dat"
 	flags := os.O_RDWR | os.O_CREATE | os.O_EXCL
@@ -69,9 +65,15 @@ func NewMmapCache(path string, numBuckets, bucketSize uint64, seek Seeker) (*Mma
 		return nil, err
 	}
 
-	if err = c.mmap(int64(numBuckets * bucketSize)); err != nil {
+	c.fmap, err = unix.Mmap(int(c.fd.Fd()), 0, int(numBuckets*bucketSize), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|(31<<unix.MAP_HUGE_SHIFT)|unix.MAP_POPULATE)
+	if err != nil {
 		return nil, err
 	}
+
+	unix.Madvise(c.fmap, unix.MADV_WILLNEED)
+	unix.Mlock(c.fmap)
+	unix.Munlock(c.fmap)
+
 	return c, nil
 }
 
@@ -110,7 +112,7 @@ func (c *MmapCache) Put(key []byte, value []byte) {
 		c.entryCount++
 	}
 	copy(c.fmap[offset:], block)
-	unix.Msync(c.fmap, unix.MS_ASYNC)
+	// unix.Msync(c.fmap, unix.MS_ASYNC)
 }
 
 func (c *MmapCache) Fill(r storage.KVPairReader) (err error) {
@@ -125,54 +127,9 @@ func (c MmapCache) Equal(o *MmapCache) bool {
 	return bytes.Equal(c.fmap, o.fmap)
 }
 
-func (c *MmapCache) mmap(size int64) (err error) {
-	c.fmap, err = Mmap(c.fd, true, size)
-	if err == nil {
-		err = Madvise(c.fmap, false) // disable readahead
-	}
-	return err
-}
-
 func (c *MmapCache) munmap() (err error) {
-	if err := Munmap(c.fmap); err != nil {
+	if err := unix.Munmap(c.fmap); err != nil {
 		return errors.Wrapf(err, "Unable to munmap cache: %q", c.path)
 	}
 	return nil
-}
-
-// Mmap uses the mmap system call to memory-map a file. If writable is true,
-// memory protection of the pages is set so that they may be written to
-// as well.
-func Mmap(fd *os.File, writable bool, size int64) ([]byte, error) {
-	mtype := unix.PROT_READ
-	if writable {
-		mtype |= unix.PROT_WRITE
-	}
-	return unix.Mmap(int(fd.Fd()), 0, int(size), mtype, unix.MAP_PRIVATE)
-}
-
-// Munmap unmaps a previously mapped slice.
-func Munmap(b []byte) error {
-	return unix.Munmap(b)
-}
-
-// Madvise uses the madvise system call to give advise about the use of memory
-// when using a slice that is memory-mapped to a file. Set the readahead flag to
-// false if page references are expected in random order.
-func Madvise(b []byte, readahead bool) error {
-	flags := unix.MADV_NORMAL
-	if !readahead {
-		flags = unix.MADV_RANDOM
-	}
-	return madvise(b, flags)
-}
-
-// This is required because the unix package does not support the madvise system call on OS X.
-func madvise(b []byte, advice int) (err error) {
-	_, _, e1 := syscall.Syscall(syscall.SYS_MADVISE, uintptr(unsafe.Pointer(&b[0])),
-		uintptr(len(b)), uintptr(advice))
-	if e1 != 0 {
-		err = e1
-	}
-	return
 }
