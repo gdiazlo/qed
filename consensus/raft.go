@@ -68,8 +68,8 @@ type RaftBalloon struct {
 	addr string // Node addr
 	id   string // Node ID
 
-	clusterConfig  *config.Config
-	nodeHostConfig *config.NodeHostConfig
+	clusterConfig  config.Config
+	nodeHostConfig config.NodeHostConfig
 	nodeHost       *dragonboat.NodeHost
 
 	sync.Mutex
@@ -87,7 +87,7 @@ type RaftBalloon struct {
 // NewRaftBalloon returns a new RaftBalloon.
 func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.ManagedStore, snapshotsCh chan *protocol.Snapshot) (*RaftBalloon, error) {
 
-	clusterConfig := &config.Config{
+	clusterConfig := config.Config{
 		NodeID:             nodeId,
 		ClusterID:          clusterId,
 		ElectionRTT:        10,
@@ -97,7 +97,7 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 		CompactionOverhead: 5,
 	}
 
-	nodeHostConfig := &config.NodeHostConfig{
+	nodeHostConfig := config.NodeHostConfig{
 		WALDir:         path,
 		NodeHostDir:    path,
 		RTTMillisecond: 200,
@@ -110,7 +110,7 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 		return nil, fmt.Errorf("new balloon fsm: %s", err)
 	}
 
-	nh, err := dragonboat.NewNodeHost(nodeHostConfig)
+	nodeHost, err := dragonboat.NewNodeHost(nodeHostConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 		clusterConfig:  clusterConfig,
 		nodeHostConfig: nodeHostConfig,
 		nodeHost:       nodeHost,
-		id:             id,
+		id:             fmt.Sprintf("node-%d", nodeId),
 		done:           make(chan struct{}),
 		fsm:            fsm,
 		snapshotsCh:    snapshotsCh,
@@ -179,24 +179,11 @@ func (b *RaftBalloon) Close(wait bool) error {
 		b.raft.api = nil
 	}
 
-	// close raft store
-	if err := b.store.rocksStore.Close(); err != nil {
-		return err
-	}
-
-	b.store.rocksStore = nil
-	b.store.log = nil
 	b.metrics = nil
 
 	// Close FSM
 	b.fsm.Close()
 	b.fsm = nil
-
-	// close database
-	if err := b.store.db.Close(); err != nil {
-		return err
-	}
-	b.store.db = nil
 
 	return nil
 }
