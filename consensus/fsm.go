@@ -327,7 +327,7 @@ func (fsm *BalloonFSM) SaveSnapshot(state interface{}, w io.Writer, abort <-chan
 	go func() {
 		defer func() { close(done) }()
 		if err = fsm.store.Backup(w, snapshotState.snapshotId); err != nil {
-			log.Infof("fsm.SaveSnapshot(): Error saving snapshot ", err)
+			log.Infof("fsm.SaveSnapshot(): Error saving snapshot %v", err)
 			return
 		}
 	}()

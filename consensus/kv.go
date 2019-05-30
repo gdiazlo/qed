@@ -79,6 +79,8 @@ type RocksdbKV struct {
 	// block cache
 	blockCache *rocksdb.Cache
 
+	MaxKeyLength uint64
+
 	// metrics
 	metrics *rocksDBMetrics
 }
@@ -193,18 +195,19 @@ func New(options Options) (*RocksdbKV, error) {
 	ro.SetFillCache(false)
 
 	store := &RocksdbKV{
-		db:         db,
-		stats:      stats,
-		path:       options.Path,
-		cfHandles:  cfHandles,
-		stableBbto: stableBbto,
-		stableOpts: stableOpts,
-		logBbto:    logBbto,
-		logOpts:    logOpts,
-		blockCache: blockCache,
-		globalOpts: globalOpts,
-		ro:         ro,
-		wo:         wo,
+		db:           db,
+		stats:        stats,
+		path:         options.Path,
+		cfHandles:    cfHandles,
+		stableBbto:   stableBbto,
+		stableOpts:   stableOpts,
+		logBbto:      logBbto,
+		logOpts:      logOpts,
+		blockCache:   blockCache,
+		globalOpts:   globalOpts,
+		MaxKeyLength: 1024,
+		ro:           ro,
+		wo:           wo,
 	}
 
 	if stats != nil {
@@ -364,19 +367,18 @@ func (kv *RocksdbKV) BulkRemoveEntries(firstKey []byte, lastKey []byte) error {
 // range [firstKey, lastKey). CompactEntries is triggered by the
 // BulkRemoveEntries method for the same key range.
 func (kv *RocksdbKV) CompactEntries(firstKey []byte, lastKey []byte) error {
-	if err := r.deleteRange(fk, lk); err != nil {
+
+	if err := kv.BulkRemoveEntries(firstKey, lastKey); err != nil {
 		return err
 	}
-	opts := gorocksdb.NewCompactionOptions()
+
+	opts := rocksdb.NewCompactionOptions()
 	opts.SetExclusiveManualCompaction(false)
 	opts.SetChangeLevel(true)
 	opts.SetTargetLevel(-1)
 	defer opts.Destroy()
-	rng := gorocksdb.Range{
-		Start: fk,
-		Limit: lk,
-	}
-	kv.db.CompactRangeWithOptions(opts, rng)
+
+	kv.db.CompactRangeWithOptions(opts, firstKey, lastKey)
 	return nil
 }
 
@@ -388,15 +390,12 @@ func (kv *RocksdbKV) FullCompaction() error {
 		fk[i] = 0
 		lk[i] = 0xFF
 	}
-	opts := gorocksdb.NewCompactionOptions()
+	opts := rocksdb.NewCompactionOptions()
 	opts.SetExclusiveManualCompaction(false)
 	opts.SetChangeLevel(true)
 	opts.SetTargetLevel(-1)
 	defer opts.Destroy()
-	rng := gorocksdb.Range{
-		Start: fk,
-		Limit: lk,
-	}
-	kv.db.CompactRangeWithOptions(opts, rng)
+
+	kv.db.CompactRangeWithOptions(opts, fk, lk)
 	return nil
 }

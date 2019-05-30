@@ -44,7 +44,7 @@ type rocksDBMetrics struct {
 	tables []*perTableMetrics
 }
 
-func newRocksDBMetrics(store *RocksDBStore) *rocksDBMetrics {
+func newRocksDBMetrics(store *RocksdbKV) *rocksDBMetrics {
 	tables := make([]*perTableMetrics, 0)
 	tables = append(tables, newPerTableMetrics(stableTable, store))
 	tables = append(tables, newPerTableMetrics(logTable, store))
@@ -671,7 +671,7 @@ type perTableMetrics struct {
 	BlockCachePinnedUsage           prometheus.GaugeFunc
 }
 
-func newPerTableMetrics(table table, store *RocksDBStore) *perTableMetrics {
+func newPerTableMetrics(table table, store *RocksdbKV) *perTableMetrics {
 	m := &perTableMetrics{
 		NumImmutableMemtables: prometheus.NewGaugeFunc(
 			prometheus.GaugeOpts{
