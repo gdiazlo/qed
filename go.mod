@@ -16,7 +16,7 @@ require (
 	github.com/imdario/mergo v0.3.7
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/lni/dragonboat v2.1.1-0.20190526145155-a7c1d3f1a969+incompatible
+	github.com/lni/dragonboat v2.1.1-0.20190530143950-3b6fc80ae8a1+incompatible
 	github.com/octago/sflags v0.2.0
 	github.com/pkg/errors v0.8.0
 	github.com/prometheus/client_golang v0.9.2
@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/procfs v0.0.0-20190328153300-af7bedc223fb // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/spf13/cobra v0.0.3
-	github.com/spf13/pflag v1.0.3 // indirect
+	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.2.2
 	golang.org/x/crypto v0.0.0-20190228161510-8dd112bcdc25
 	golang.org/x/net v0.0.0-20181220203305-927f97764cc3 // indirect
