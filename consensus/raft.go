@@ -19,7 +19,6 @@ package consensus
 import (
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -29,7 +28,6 @@ import (
 	"github.com/bbva/qed/metrics"
 	"github.com/bbva/qed/protocol"
 	"github.com/bbva/qed/raftwal/commands"
-	"github.com/bbva/qed/raftwal/raftrocks"
 	"github.com/bbva/qed/storage"
 	"github.com/hashicorp/raft"
 	"github.com/lni/dragonboat"
@@ -70,24 +68,12 @@ type RaftBalloon struct {
 	addr string // Node addr
 	id   string // Node ID
 
-	raft struct {
-		clusterConfig  *config.Config
-		nodeHostConfig *config.NodeHostConfig
-
-		nodeHost *dragonboat.NodeHost
-
-		applyTimeout time.Duration
-	}
-
-	store struct {
-		db         storage.ManagedStore    // Persistent database
-		log        raft.LogStore           // Persistent log store
-		rocksStore *raftrocks.RocksDBStore // Underlying rocksdb-backed persistent log store
-		//stable    *raftrocks.RocksDBStore // Persistent k-v store
-		snapshots *raft.FileSnapshotStore // Persistent snapstop store
-	}
+	clusterConfig  *config.Config
+	nodeHostConfig *config.NodeHostConfig
+	nodeHost       *dragonboat.NodeHost
 
 	sync.Mutex
+
 	closed bool
 	wg     sync.WaitGroup
 	done   chan struct{}
@@ -99,22 +85,24 @@ type RaftBalloon struct {
 }
 
 // NewRaftBalloon returns a new RaftBalloon.
-func NewRaftBalloon(path, addr, id string, store storage.ManagedStore, snapshotsCh chan *protocol.Snapshot) (*RaftBalloon, error) {
+func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.ManagedStore, snapshotsCh chan *protocol.Snapshot) (*RaftBalloon, error) {
 
-	// Create the log store and stable store
-	rocksStore, err := raftrocks.New(raftrocks.Options{Path: path + "/wal", NoSync: true, EnableStatistics: true})
-	if err != nil {
-		return nil, fmt.Errorf("cannot create a new rocksdb log store: %s", err)
-	}
-	logStore, err := raft.NewLogCache(raftLogCacheSize, rocksStore)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create a new cached store: %s", err)
+	clusterConfig := &config.Config{
+		NodeID:             nodeId,
+		ClusterID:          clusterId,
+		ElectionRTT:        10,
+		HeartbeatRTT:       1,
+		CheckQuorum:        true,
+		SnapshotEntries:    10, // TODO set this to the "size of a complete SST file"-equivalent
+		CompactionOverhead: 5,
 	}
 
-	// stableStore, err := raftrocks.New(raftrocks.Options{Path: path + "/config", NoSync: true})
-	// if err != nil {
-	// 	return nil, fmt.Errorf("cannot create a new rocksdb stable store: %s", err)
-	// }
+	nodeHostConfig := &config.NodeHostConfig{
+		WALDir:         path,
+		NodeHostDir:    path,
+		RTTMillisecond: 200,
+		RaftAddress:    addr,
+	}
 
 	// Instantiate balloon FSM
 	fsm, err := NewBalloonFSM(store, hashing.NewSha256Hasher)
@@ -122,18 +110,23 @@ func NewRaftBalloon(path, addr, id string, store storage.ManagedStore, snapshots
 		return nil, fmt.Errorf("new balloon fsm: %s", err)
 	}
 
-	rb := &RaftBalloon{
-		path:        path,
-		addr:        addr,
-		id:          id,
-		done:        make(chan struct{}),
-		fsm:         fsm,
-		snapshotsCh: snapshotsCh,
+	nh, err := dragonboat.NewNodeHost(nodeHostConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	rb.store.db = store
-	rb.store.log = logStore
-	rb.store.rocksStore = rocksStore
+	rb := &RaftBalloon{
+		path:           path,
+		addr:           addr,
+		clusterConfig:  clusterConfig,
+		nodeHostConfig: nodeHostConfig,
+		nodeHost:       nodeHost,
+		id:             id,
+		done:           make(chan struct{}),
+		fsm:            fsm,
+		snapshotsCh:    snapshotsCh,
+	}
+
 	rb.metrics = newRaftBalloonMetrics(rb)
 
 	return rb, nil
@@ -154,13 +147,10 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 	peers := make(map[uint64]string)
 
 	peers[0] = b.addr
-	// NodeHostConfig.LogDBFactory TODO: use our KV
-	if err := b.raft.nodeHost.StartOnDiskCluster(peers, bootstrap, b.fsm, b.raft.clusterConfig); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to add cluster, %v\n", err)
-		os.Exit(1)
-	}
 
-	return nil
+	err := b.nodeHost.StartOnDiskCluster(peers, bootstrap, b.fsm, b.clusterConfig)
+
+	return err
 }
 
 // Close closes the RaftBalloon. If wait is true, waits for a graceful shutdown.

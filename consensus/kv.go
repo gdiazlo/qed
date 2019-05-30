@@ -105,7 +105,7 @@ func (kv *RocksdbKV) Name() string {
 }
 
 // NewRocksDBKV takes a file path and returns a connected Raft backend.
-func NewRocksDBStore(path string) (*RocksdbKV, error) {
+func NewRocksDBKVStore(path string, walPath string) (*RocksdbKV, error) {
 	return New(Options{Path: path, NoSync: true})
 }
 
