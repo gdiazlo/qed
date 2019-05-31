@@ -17,21 +17,22 @@
 package consensus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/bbva/qed/balloon"
+	"github.com/bbva/qed/consensus/commands"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/log"
 	"github.com/bbva/qed/metrics"
 	"github.com/bbva/qed/protocol"
-	"github.com/bbva/qed/raftwal/commands"
 	"github.com/bbva/qed/storage"
-	"github.com/hashicorp/raft"
 	"github.com/lni/dragonboat"
 	"github.com/lni/dragonboat/config"
+	"github.com/lni/dragonboat/statemachine"
 )
 
 const (
@@ -147,8 +148,8 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 	peers := make(map[uint64]string)
 
 	peers[0] = b.addr
-
-	err := b.nodeHost.StartOnDiskCluster(peers, bootstrap, b.fsm, b.clusterConfig)
+	fsmFactory := func(x, y uint64) statemachine.IOnDiskStateMachine { return b.fsm }
+	err := b.nodeHost.StartOnDiskCluster(peers, !bootstrap, fsmFactory, b.clusterConfig)
 
 	return err
 }
@@ -169,14 +170,10 @@ func (b *RaftBalloon) Close(wait bool) error {
 	b.wg.Wait()
 
 	// shutdown raft
-	if b.raft.api != nil {
-		f := b.raft.api.Shutdown()
-		if wait {
-			if e := f.(raft.Future); e.Error() != nil {
-				return e.Error()
-			}
-		}
-		b.raft.api = nil
+
+	if b.nodeHost != nil {
+		b.nodeHost.Stop()
+		b.nodeHost = nil
 	}
 
 	b.metrics = nil
@@ -189,7 +186,7 @@ func (b *RaftBalloon) Close(wait bool) error {
 }
 
 // Wait until node becomes leader or time is out
-func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (string, error) {
+func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (uint64, error) {
 	tck := time.NewTicker(leaderWaitDelay)
 	defer tck.Stop()
 	tmr := time.NewTimer(timeout)
@@ -198,29 +195,42 @@ func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (string, error) {
 	for {
 		select {
 		case <-tck.C:
-			l := string(b.raft.api.Leader())
-			if l != "" {
-				return l, nil
+			id, ok, err := b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
+			if ok && err == nil {
+				return id, nil
 			}
 		case <-tmr.C:
-			return "", fmt.Errorf("timeout expired")
+			return 0, fmt.Errorf("timeout expired")
 		}
 	}
 }
 
 func (b *RaftBalloon) IsLeader() bool {
-	return b.raft.api.State() == raft.Leader
+	id, ok, err := b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
+	if !ok || err != nil {
+		return false
+	}
+	return id == b.clusterConfig.NodeID
 }
 
 // Addr returns the address of the store.
 func (b *RaftBalloon) Addr() string {
-	return string(b.raft.transport.LocalAddr())
+	return b.nodeHost.RaftAddress()
 }
 
 // LeaderAddr returns the Raft address of the current leader. Returns a
 // blank string if there is no leader.
-func (b *RaftBalloon) LeaderAddr() string {
-	return string(b.raft.api.Leader())
+func (b *RaftBalloon) LeaderAddr() (string, error) {
+	id, err := b.LeaderID()
+	if err != nil {
+		return "", err
+	}
+	nodes, err := b.Nodes()
+	if err != nil {
+		return "", err
+	}
+
+	return nodes[id], nil
 }
 
 // ID returns the Raft ID of the store.
@@ -230,34 +240,27 @@ func (b *RaftBalloon) ID() string {
 
 // LeaderID returns the node ID of the Raft leader. Returns a
 // blank string if there is no leader, or an error.
-func (b *RaftBalloon) LeaderID() (string, error) {
-	addr := b.LeaderAddr()
-	configFuture := b.raft.api.GetConfiguration()
-	if err := configFuture.Error(); err != nil {
-		log.Infof("failed to get raft configuration: %v", err)
-		return "", err
+func (b *RaftBalloon) LeaderID() (uint64, error) {
+	id, ok, err := b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
+	if !ok || err != nil {
+		return 0, fmt.Errorf("Error geting leader information: %v", err)
 	}
-
-	for _, srv := range configFuture.Configuration().Servers {
-		if srv.Address == raft.ServerAddress(addr) {
-			return string(srv.ID), nil
-		}
-	}
-	return "", nil
+	return id, nil
 }
 
 // Nodes returns the slice of nodes in the cluster, sorted by ID ascending.
-func (b *RaftBalloon) Nodes() ([]raft.Server, error) {
-	f := b.raft.api.GetConfiguration()
-	if f.Error() != nil {
-		return nil, f.Error()
+func (b *RaftBalloon) Nodes() (map[uint64]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	m, err := b.nodeHost.GetClusterMembership(ctx, b.clusterConfig.ClusterID)
+	if err != nil {
+		return nil, err
 	}
-
-	return f.Configuration().Servers, nil
+	return m.Nodes, nil
 }
 
 // Remove removes a node from the store, specified by ID.
-func (b *RaftBalloon) Remove(id string) error {
+func (b *RaftBalloon) Remove(id uint64) error {
 	log.Infof("received request to remove node %s", id)
 	if err := b.remove(id); err != nil {
 		log.Infof("failed to remove node %s: %s", id, err.Error())
@@ -269,157 +272,26 @@ func (b *RaftBalloon) Remove(id string) error {
 }
 
 // remove removes the node, with the given ID, from the cluster.
-func (b *RaftBalloon) remove(id string) error {
-	if b.raft.api.State() != raft.Leader {
-		return ErrNotLeader
+func (b *RaftBalloon) remove(id uint64) error {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	m, err := b.nodeHost.GetClusterMembership(ctx, b.clusterConfig.ClusterID)
+	if err != nil {
+		return err
 	}
 
-	f := b.raft.api.RemoveServer(raft.ServerID(id), 0, 0)
-	if f.Error() != nil {
-		if f.Error() == raft.ErrNotLeader {
-			return ErrNotLeader
+	resp, err := b.nodeHost.RequestDeleteNode(b.clusterConfig.ClusterID, id, m.ConfigChangeID, 1*time.Second)
+
+	for {
+		select {
+		case <-resp.CompletedC:
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("Timedout requesting deletion")
 		}
-		return f.Error()
+
 	}
-
-	cmd := &commands.MetadataDeleteCommand{Id: id}
-	_, err := b.raftApply(commands.MetadataDeleteCommandType, cmd)
-
-	return err
-}
-
-func (b *RaftBalloon) raftApply(t commands.CommandType, cmd interface{}) (interface{}, error) {
-	buf, err := commands.Encode(t, cmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode request: %v", err)
-	}
-	future := b.raft.api.Apply(buf, b.raft.applyTimeout)
-	if err := future.Error(); err != nil {
-		return nil, err
-	}
-	return future.Response(), nil
-}
-
-/*
-	RaftBalloon API implements the Ballon API in the RAFT system
-
-*/
-
-func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
-	cmd := &commands.AddEventCommand{Event: event}
-	resp, err := b.raftApply(commands.AddEventCommandType, cmd)
-	if err != nil {
-		return nil, err
-	}
-	b.metrics.Adds.Inc()
-
-	snapshot := resp.(*fsmAddResponse).snapshot
-	p := protocol.Snapshot(*snapshot)
-
-	//Send snapshot to the snapshot channel
-	b.snapshotsCh <- &p // TODO move this to an upper layer (shard manager?)
-
-	return snapshot, nil
-}
-
-func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
-	cmd := &commands.AddEventsBulkCommand{Events: bulk}
-	resp, err := b.raftApply(commands.AddEventsBulkCommandType, cmd)
-	if err != nil {
-		return nil, err
-	}
-	b.metrics.Adds.Add(float64(len(bulk)))
-
-	snapshotBulk := resp.(*fsmAddBulkResponse).snapshotBulk
-
-	//Send snapshot to the snapshot channel
-	// TODO move this to an upper layer (shard manager?)
-	for _, s := range snapshotBulk {
-		p := protocol.Snapshot(*s)
-		b.snapshotsCh <- &p
-	}
-
-	return snapshotBulk, nil
-}
-
-func (b *RaftBalloon) QueryDigestMembership(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error) {
-	b.metrics.DigestMembershipQueries.Inc()
-	return b.fsm.QueryDigestMembership(keyDigest, version)
-}
-
-func (b *RaftBalloon) QueryMembership(event []byte, version uint64) (*balloon.MembershipProof, error) {
-	b.metrics.MembershipQueries.Inc()
-	return b.fsm.QueryMembership(event, version)
-}
-
-func (b *RaftBalloon) QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error) {
-	b.metrics.IncrementalQueries.Inc()
-	return b.fsm.QueryConsistency(start, end)
-}
-
-// Join joins a node, identified by id and located at addr, to this store.
-// The node must be ready to respond to Raft communications at that address.
-// This must be called from the Leader or it will fail.
-func (b *RaftBalloon) Join(nodeID, addr string, metadata map[string]string) error {
-
-	log.Infof("received join request for remote node %s at %s", nodeID, addr)
-
-	configFuture := b.raft.api.GetConfiguration()
-	if err := configFuture.Error(); err != nil {
-		log.Errorf("failed to get raft servers configuration: %v", err)
-		return err
-	}
-
-	for _, srv := range configFuture.Configuration().Servers {
-		// If a node already exists with either the joining node's ID or address,
-		// that node may need to be removed from the config first.
-		if srv.ID == raft.ServerID(nodeID) || srv.Address == raft.ServerAddress(addr) {
-			// However if *both* the ID and the address are the same, then nothing -- not even
-			// a join operation -- is needed.
-			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeID) {
-				log.Infof("node %s at %s already member of cluster, ignoring join request", nodeID, addr)
-				return nil
-			}
-
-			future := b.raft.api.RemoveServer(srv.ID, 0, 0)
-			if err := future.Error(); err != nil {
-				return fmt.Errorf("error removing existing node %s at %s: %s", nodeID, addr, err)
-			}
-		}
-	}
-
-	f := b.raft.api.AddVoter(raft.ServerID(nodeID), raft.ServerAddress(addr), 0, 0)
-	if e := f.(raft.Future); e.Error() != nil {
-		if e.Error() == raft.ErrNotLeader {
-			return ErrNotLeader
-		}
-		return e.Error()
-	}
-
-	// Metadata
-	if err := b.SetMetadata(nodeID, metadata); err != nil {
-		return err
-	}
-
-	log.Infof("node %s at %s joined successfully", nodeID, addr)
-	return nil
-}
-
-// SetMetadata adds the metadata md to any existing metadata for
-// this node.
-func (b *RaftBalloon) SetMetadata(nodeInvolved string, md map[string]string) error {
-	cmd := b.fsm.setMetadata(nodeInvolved, md)
-	_, err := b.WaitForLeader(5 * time.Second)
-	if err != nil {
-		return err
-	}
-
-	resp, err := b.raftApply(commands.MetadataSetCommandType, cmd)
-	if err != nil {
-		return err
-	}
-
-	return resp.(*fsmGenericResponse).error
 }
 
 // TODO Improve info structure.
@@ -432,8 +304,39 @@ func (b *RaftBalloon) Info() map[string]interface{} {
 }
 
 func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
-	if registry != nil {
-		b.store.rocksStore.RegisterMetrics(registry)
-	}
 	registry.MustRegister(b.metrics.collectors()...)
+}
+
+func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
+	var snapshot balloon.Snapshot
+
+	cmd, err := commands.Encode(commands.AddEventCommandType, &commands.AddEventCommand{Event: event})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode command: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	session := b.nodeHost.GetNoOPSession(b.clusterConfig.ClusterID)
+
+	defer b.nodeHost.CloseSession(ctx, session)
+
+	result, err := b.nodeHost.SyncPropose(ctx, session, cmd)
+	if err != nil {
+		return nil, err
+	}
+	b.metrics.Adds.Inc()
+
+	err = decodeMsgPack(result.Data, snapshot)
+	if err != nil {
+		return nil, err
+	}
+
+	p := protocol.Snapshot(snapshot)
+
+	//Send snapshot to the snapshot channel
+	b.snapshotsCh <- &p // TODO move this to an upper layer (shard manager?)
+
+	return &snapshot, nil
 }
