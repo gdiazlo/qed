@@ -60,24 +60,19 @@ func joinHandle(raftBalloon raftwal.RaftBalloonApi) http.HandlerFunc {
 			return
 		}
 
-		nodeID, ok := body["id"].(string)
+		nodeId, ok := body["nodeId"].(uint64)
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		m, ok := body["metadata"].(map[string]interface{})
+		clusterId, ok := body["clusterId"].(uint64)
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		// TO IMPROVE: use map[string]interface{} for nested metadata.
-		metadata := make(map[string]string)
-		for k, v := range m {
-			metadata[k] = v.(string)
-		}
 
-		if err := raftBalloon.Join(nodeID, remoteAddr, metadata); err != nil {
+		if err := raftBalloon.Join(nodeId, clusterId, remoteAddr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

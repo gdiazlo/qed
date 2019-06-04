@@ -177,11 +177,12 @@ func NewServer(conf *Config) (*Server, error) {
 	return server, nil
 }
 
-func join(joinAddr, raftAddr, nodeID string, metadata map[string]string) error {
+func join(joinAddr, raftAddr string, nodeId, clusterId uint64) error {
 	body := make(map[string]interface{})
 	body["addr"] = raftAddr
-	body["id"] = nodeID
-	body["metadata"] = metadata
+	body["nodeId"] = nodeId
+	body["clusterId"] = clusterId
+
 	b, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -204,11 +205,6 @@ func (s *Server) Start() error {
 
 	metadata := map[string]string{}
 	metadata["HTTPAddr"] = s.conf.HTTPAddr
-
-	err := s.raftBalloon.Open(s.bootstrap, metadata)
-	if err != nil {
-		return err
-	}
 
 	log.Debugf("	* Starting metrics HTTP server in addr: %s", s.conf.MetricsAddr)
 	s.metricsServer.Start()
@@ -242,18 +238,23 @@ func (s *Server) Start() error {
 
 	log.Debugf(" ready on %s and %s\n", s.conf.HTTPAddr, s.conf.MgmtAddr)
 
+	s.sender.Start(s.snapshotsCh)
+
+	s.agent.Start()
+
 	if !s.bootstrap {
 		for _, addr := range s.conf.RaftJoinAddr {
 			log.Debug("	* Joining existent cluster QED MGMT HTTP server in addr: ", s.conf.MgmtAddr)
-			if err := join(addr, s.conf.RaftAddr, s.conf.NodeID, metadata); err != nil {
+			if err := join(addr, s.conf.RaftAddr, s.conf.NodeID, s.conf.ClusterID, metadata); err != nil {
 				log.Fatalf("failed to join node at %s: %s", addr, err.Error())
 			}
 		}
 	}
 
-	s.sender.Start(s.snapshotsCh)
-
-	s.agent.Start()
+	err := s.raftBalloon.Open(s.bootstrap, metadata)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
