@@ -94,13 +94,13 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
-		SnapshotEntries:    10, // TODO set this to the "size of a complete SST file"-equivalent
+		SnapshotEntries:    100000, // TODO set this to the "size of a complete SST file"-equivalent
 		CompactionOverhead: 5,
 	}
 
 	nodeHostConfig := config.NodeHostConfig{
-		WALDir:         path,
-		NodeHostDir:    path,
+		WALDir:         path + "/wal",
+		NodeHostDir:    path + "/nh",
 		RTTMillisecond: 200,
 		RaftAddress:    addr,
 	}
@@ -147,7 +147,10 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 
 	peers := make(map[uint64]string)
 
-	peers[0] = b.addr
+	if bootstrap {
+		peers[1] = b.addr
+	}
+
 	fsmFactory := func(x, y uint64) statemachine.IOnDiskStateMachine { return b.fsm }
 	err := b.nodeHost.StartOnDiskCluster(peers, !bootstrap, fsmFactory, b.clusterConfig)
 
@@ -179,9 +182,48 @@ func (b *RaftBalloon) Close(wait bool) error {
 	b.metrics = nil
 
 	// Close FSM
-	b.fsm.Close()
-	b.fsm = nil
+	// b.fsm.Close()
+	// b.fsm = nil
 
+	return nil
+}
+
+func waitForResp(s *dragonboat.RequestState, timeout time.Duration) (*statemachine.Result, error) {
+	for {
+		select {
+		case r := <-s.CompletedC:
+			if r.Completed() {
+				result := r.GetResult()
+				return &result, nil
+			}
+			return nil, fmt.Errorf("Request was processed but not completed succesfully")
+		case <-time.After(timeout):
+			return nil, fmt.Errorf("timeout")
+		}
+	}
+}
+
+// Join joins a node, identified by id and located at addr, to this store.
+// The node must be ready to respond to Raft communications at that address.
+// This must be called from the Leader or it will fail.
+func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	m, err := b.nodeHost.GetClusterMembership(ctx, clusterId)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("received join request for remote node %s at %s", nodeId, addr)
+	resp, err := b.nodeHost.RequestAddNode(clusterId, nodeId, addr, m.ConfigChangeID, 1*time.Second)
+
+	_, err = waitForResp(resp, 1*time.Second)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("node %s at %s joined successfully", nodeId, addr)
 	return nil
 }
 
@@ -189,8 +231,6 @@ func (b *RaftBalloon) Close(wait bool) error {
 func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (uint64, error) {
 	tck := time.NewTicker(leaderWaitDelay)
 	defer tck.Stop()
-	tmr := time.NewTimer(timeout)
-	defer tmr.Stop()
 
 	for {
 		select {
@@ -199,7 +239,7 @@ func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (uint64, error) {
 			if ok && err == nil {
 				return id, nil
 			}
-		case <-tmr.C:
+		case <-time.After(timeout):
 			return 0, fmt.Errorf("timeout expired")
 		}
 	}
@@ -320,15 +360,15 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 
 	session := b.nodeHost.GetNoOPSession(b.clusterConfig.ClusterID)
 
-	defer b.nodeHost.CloseSession(ctx, session)
+	// defer b.nodeHost.CloseSession(ctx, session)
 
 	result, err := b.nodeHost.SyncPropose(ctx, session, cmd)
 	if err != nil {
 		return nil, err
 	}
-	b.metrics.Adds.Inc()
 
-	err = decodeMsgPack(result.Data, snapshot)
+	b.metrics.Adds.Inc()
+	err = decodeMsgPack(result.Data[1:], &snapshot)
 	if err != nil {
 		return nil, err
 	}
