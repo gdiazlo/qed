@@ -53,6 +53,8 @@ github.com/lni/dragonboat v2.1.1-0.20190526145155-a7c1d3f1a969+incompatible h1:Y
 github.com/lni/dragonboat v2.1.1-0.20190526145155-a7c1d3f1a969+incompatible/go.mod h1:eI3naIUzh2+DKqtOFwdZ2t0Z/BjlGEjWZgS07x7x8oU=
 github.com/lni/dragonboat v2.1.1-0.20190530143950-3b6fc80ae8a1+incompatible h1:G0zjcHSv7W0np3OGjFlyRkKffW4d3GJWF/pNGVqK+/0=
 github.com/lni/dragonboat v2.1.1-0.20190530143950-3b6fc80ae8a1+incompatible/go.mod h1:eI3naIUzh2+DKqtOFwdZ2t0Z/BjlGEjWZgS07x7x8oU=
+github.com/lni/dragonboat v2.1.1-0.20190605065244-81557b673186+incompatible h1:Z2gqbMA+dcoA/zgiep6e6kk7NNAuZ2YDiM24FgdLdhg=
+github.com/lni/dragonboat v2.1.1-0.20190605065244-81557b673186+incompatible/go.mod h1:eI3naIUzh2+DKqtOFwdZ2t0Z/BjlGEjWZgS07x7x8oU=
 github.com/lni/dragonboat v2.1.7+incompatible h1:U04ZmiQKXcdRWNE6jccSiYJK7k+ECwN7XIw1xpTiJeE=
 github.com/lni/dragonboat v2.1.7+incompatible/go.mod h1:eI3naIUzh2+DKqtOFwdZ2t0Z/BjlGEjWZgS07x7x8oU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1 h1:4hp9jkHxhMHkqkrB3Ix0jegS5sx/RkqARlsWZ6pIwiU=

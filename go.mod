@@ -16,7 +16,7 @@ require (
 	github.com/imdario/mergo v0.3.7
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/lni/dragonboat v2.1.1-0.20190530143950-3b6fc80ae8a1+incompatible
+	github.com/lni/dragonboat v2.1.1-0.20190605065244-81557b673186+incompatible
 	github.com/octago/sflags v0.2.0
 	github.com/pkg/errors v0.8.0
 	github.com/prometheus/client_golang v0.9.2
