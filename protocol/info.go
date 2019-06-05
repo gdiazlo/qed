@@ -24,7 +24,7 @@ const (
 )
 
 type ShardDetail struct {
-	NodeId   string `json:"nodeId"`
+	NodeId   uint64 `json:"nodeId"`
 	HTTPAddr string `json:"httpAddr"`
 }
 
@@ -32,5 +32,5 @@ type Shards struct {
 	NodeId    uint64                 `json:"nodeId"`
 	LeaderId  uint64                 `json:"leaderId"`
 	URIScheme Scheme                 `json:"uriScheme"`
-	Shards    map[string]ShardDetail `json:"shards"`
+	Shards    map[uint64]ShardDetail `json:"shards"`
 }

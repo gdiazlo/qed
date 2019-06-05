@@ -556,16 +556,16 @@ func TestManualDiscoveryPrimaryLost(t *testing.T) {
 		}
 		if req.Host == "secondary1.foo" && req.URL.Path == "/info/shards" {
 			info := protocol.Shards{
-				NodeId:    "secondary1",
-				LeaderId:  "primary2",
+				NodeId:    201,
+				LeaderId:  102,
 				URIScheme: "http",
-				Shards: map[string]protocol.ShardDetail{
-					"primary2": protocol.ShardDetail{
-						NodeId:   "primary2",
+				Shards: map[uint64]protocol.ShardDetail{
+					102: protocol.ShardDetail{
+						NodeId:   102,
 						HTTPAddr: "primary2.foo",
 					},
-					"secondary1": protocol.ShardDetail{
-						NodeId:   "secondary1",
+					201: protocol.ShardDetail{
+						NodeId:   201,
 						HTTPAddr: "secondary1.foo",
 					},
 				},
@@ -613,16 +613,16 @@ func TestAutoDiscoveryPrimaryLost(t *testing.T) {
 		}
 		if req.Host == "secondary1.foo" && req.URL.Path == "/info/shards" {
 			info := protocol.Shards{
-				NodeId:    "secondary1",
-				LeaderId:  "primary2",
+				NodeId:    201,
+				LeaderId:  102,
 				URIScheme: "http",
-				Shards: map[string]protocol.ShardDetail{
-					"primary2": protocol.ShardDetail{
-						NodeId:   "primary2",
+				Shards: map[uint64]protocol.ShardDetail{
+					102: protocol.ShardDetail{
+						NodeId:   102,
 						HTTPAddr: "primary2.foo",
 					},
-					"secondary1": protocol.ShardDetail{
-						NodeId:   "secondary1",
+					201: protocol.ShardDetail{
+						NodeId:   201,
 						HTTPAddr: "secondary1.foo",
 					},
 				},

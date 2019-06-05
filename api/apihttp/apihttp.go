@@ -428,8 +428,8 @@ func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 		}
 
 		info := balloon.Info()
-		details := make(map[string]protocol.ShardDetail)
-		for k, v := range info["meta"].(map[string]map[string]string) {
+		details := make(map[uint64]protocol.ShardDetail)
+		for k, v := range info["meta"].(map[uint64]map[string]string) {
 			fmt.Println(k, v)
 			details[k] = protocol.ShardDetail{
 				NodeId:   k,
