@@ -174,10 +174,8 @@ func (b *RaftBalloon) Close(wait bool) error {
 
 	// shutdown raft
 
-	if b.nodeHost != nil {
-		b.nodeHost.Stop()
-		b.nodeHost = nil
-	}
+	b.nodeHost.Stop()
+	b.nodeHost = nil
 
 	b.metrics = nil
 
