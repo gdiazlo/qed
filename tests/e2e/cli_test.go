@@ -27,7 +27,7 @@ import (
 )
 
 func TestClientToSingleServer(t *testing.T) {
-	b0, a0 := newServerSetup(0, true)
+	b0, a0 := newServerSetup(1, true)
 	let, report := spec.New()
 	defer func() {
 		a0()
@@ -121,9 +121,9 @@ func TestClientToSingleServer(t *testing.T) {
 }
 
 func TestClientToClusterWithLeaderChange(t *testing.T) {
-	b0, a0 := newServerSetup(0, true)
-	b1, a1 := newServerSetup(1, true)
-	b2, a2 := newServerSetup(2, true)
+	b0, a0 := newServerSetup(1, true)
+	b1, a1 := newServerSetup(2, true)
+	b2, a2 := newServerSetup(3, true)
 	let, report := spec.New()
 	defer func() {
 		// a0()
@@ -133,11 +133,11 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 	}()
 
 	err := b0()
-	spec.NoError(t, err, "Error starting node 0")
-	err = b1()
 	spec.NoError(t, err, "Error starting node 1")
-	err = b2()
+	err = b1()
 	spec.NoError(t, err, "Error starting node 2")
+	err = b2()
+	spec.NoError(t, err, "Error starting node 3")
 
 	let(t, "Add one event through cli and verify it", func(t *testing.T) {
 		let(t, "Add event", func(t *testing.T) {
@@ -250,8 +250,8 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 }
 
 func TestClientToClusterWithBadEndpoint(t *testing.T) {
-	b0, a0 := newServerSetup(0, true)
-	b1, a1 := newServerSetup(1, true)
+	b0, a0 := newServerSetup(1, true)
+	b1, a1 := newServerSetup(2, true)
 
 	let, report := spec.New()
 	defer func() {
@@ -261,9 +261,9 @@ func TestClientToClusterWithBadEndpoint(t *testing.T) {
 	}()
 
 	err := b0()
-	spec.NoError(t, err, "Error starting node 0")
-	err = b1()
 	spec.NoError(t, err, "Error starting node 1")
+	err = b1()
+	spec.NoError(t, err, "Error starting node 2")
 
 	let(t, "Success by extracting topology from right endpoint", func(t *testing.T) {
 

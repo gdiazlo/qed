@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lni/dragonboat/logger"
+
 	"github.com/bbva/qed/client"
 	"github.com/bbva/qed/crypto"
 	"github.com/bbva/qed/hashing"
@@ -38,6 +40,12 @@ import (
 
 func init() {
 	debug.SetGCPercent(10)
+	logger.GetLogger("raft").SetLevel(logger.ERROR)
+	logger.GetLogger("rsm").SetLevel(logger.ERROR)
+	logger.GetLogger("transport").SetLevel(logger.ERROR)
+	logger.GetLogger("grpc").SetLevel(logger.ERROR)
+	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
+	logger.GetLogger("logdb").SetLevel(logger.ERROR)
 }
 
 // this function retries the execuntion of fn multiple times
@@ -91,24 +99,23 @@ func setupStore(t *testing.T) (scope.TestF, scope.TestF) {
 }
 
 // This function returns a server config object based on the function parameters:
-// 	- id: used to generate diffent listen addrs when starting multiple servers
-//	      when id > 0, the node is set up to join the 0 node to its default port
+// 	- nodeId: used to generate diffent listen addrs when starting multiple servers
+//	      when id > 0, the node is set up to join the 1 node to its default port
 //	- pathDB: path to where the database will store its files
 //	- signPath: oath to where the signer key is stored
 //	- tlsPath: path to where the tls cer and key are stored
 //	- tls: if true, tls is activated
 func configQedServer(nodeId, clusterId uint64, pathDB, signPath, tlsPath string, tls bool) *server.Config {
-	hostname, _ := os.Hostname()
 	conf := server.DefaultConfig()
 	conf.APIKey = "APIKey"
-	conf.NodeId = id
-	conf.ClusterId = id
-	conf.HTTPAddr = fmt.Sprintf("127.0.0.1:880%d", id)
-	conf.MgmtAddr = fmt.Sprintf("127.0.0.1:870%d", id)
-	conf.MetricsAddr = fmt.Sprintf("127.0.0.1:860%d", id)
-	conf.RaftAddr = fmt.Sprintf("127.0.0.1:850%d", id)
-	conf.GossipAddr = fmt.Sprintf("127.0.0.1:840%d", id)
-	if id > 0 {
+	conf.NodeId = nodeId
+	conf.ClusterId = nodeId
+	conf.HTTPAddr = fmt.Sprintf("127.0.0.1:880%d", nodeId)
+	conf.MgmtAddr = fmt.Sprintf("127.0.0.1:870%d", nodeId)
+	conf.MetricsAddr = fmt.Sprintf("127.0.0.1:860%d", nodeId)
+	conf.RaftAddr = fmt.Sprintf("127.0.0.1:850%d", nodeId)
+	conf.GossipAddr = fmt.Sprintf("127.0.0.1:840%d", nodeId)
+	if nodeId > 1 {
 		conf.RaftJoinAddr = []string{"127.0.0.1:8700"}
 		conf.GossipJoinAddr = []string{"127.0.0.1:8400"}
 	}
@@ -129,7 +136,7 @@ func configQedServer(nodeId, clusterId uint64, pathDB, signPath, tlsPath string,
 // 	- the second one deletes the server the first one created
 // Each server instance is completely new and blank.
 // It will also generate all the needed keys for the instance.
-func newServerSetup(id int, tls bool) (func() error, func() error) {
+func newServerSetup(nodeId uint64, tls bool) (func() error, func() error) {
 	var srv *server.Server
 	var path string
 	var err error
@@ -173,7 +180,7 @@ func newServerSetup(id int, tls bool) (func() error, func() error) {
 
 // This function will return a new qed http client.
 // Always check for the error.
-func newQedClient(id int) (*client.HTTPClient, error) {
+func newQedClient(nodeId uint64) (*client.HTTPClient, error) {
 	// QED client
 	transport := http.DefaultTransport.(*http.Transport)
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false}
@@ -181,7 +188,7 @@ func newQedClient(id int) (*client.HTTPClient, error) {
 	httpClient.Transport = transport
 	client, err := client.NewHTTPClient(
 		client.SetHttpClient(httpClient),
-		client.SetURLs(fmt.Sprintf("http://127.0.0.1:880%d", id)),
+		client.SetURLs(fmt.Sprintf("http://127.0.0.1:880%d", nodeId)),
 		client.SetAPIKey("APIKey"),
 		client.SetTopologyDiscovery(true),
 		client.SetHealthChecks(false),

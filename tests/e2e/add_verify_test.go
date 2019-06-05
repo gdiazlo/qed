@@ -29,7 +29,7 @@ import (
 )
 
 func TestAddVerify(t *testing.T) {
-	before, after := newServerSetup(0, false)
+	before, after := newServerSetup(1, false)
 	let, report := spec.New()
 	defer func() { t.Logf(report()) }()
 	// log.SetLogger("", log.DEBUG)
@@ -41,7 +41,7 @@ func TestAddVerify(t *testing.T) {
 		var snapshot *protocol.Snapshot
 		var err error
 
-		client, err := newQedClient(0)
+		client, err := newQedClient(1)
 		spec.NoError(t, err, "Error creating qed client")
 		defer func() { client.Close() }()
 
@@ -76,7 +76,7 @@ func TestAddVerify(t *testing.T) {
 		var err error
 		var snap1, snap2 *protocol.Snapshot
 
-		client, err := newQedClient(0)
+		client, err := newQedClient(1)
 		spec.NoError(t, err, "Error creating a new qed client")
 		defer func() { client.Close() }()
 
@@ -114,7 +114,7 @@ func TestAddVerify(t *testing.T) {
 
 		var s [size]*protocol.Snapshot
 
-		client, err := newQedClient(0)
+		client, err := newQedClient(1)
 		spec.NoError(t, err, "Error creating a new qed client")
 		defer func() { client.Close() }()
 

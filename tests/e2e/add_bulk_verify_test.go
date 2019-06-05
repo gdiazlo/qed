@@ -29,7 +29,7 @@ import (
 )
 
 func TestAddBulkAndVerify(t *testing.T) {
-	before, after := newServerSetup(0, false)
+	before, after := newServerSetup(1, false)
 	let, report := spec.New()
 	defer func() {
 		_ = after()
@@ -52,7 +52,7 @@ func TestAddBulkAndVerify(t *testing.T) {
 	err := before()
 	spec.NoError(t, err, "Error starting server")
 
-	client, err := newQedClient(0)
+	client, err := newQedClient(1)
 	spec.NoError(t, err, "Error creating a new qed client")
 	defer func() { client.Close() }()
 

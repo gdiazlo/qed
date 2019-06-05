@@ -415,7 +415,8 @@ func (c *HTTPClient) discover() error {
 			var primary string
 			secondaries := make([]string, 0)
 			for id, shard := range shards.Shards {
-				if id == shards.LeaderId {
+				// FIX THIS CASTING FROM UINT64 TO STRING!
+				if id == string(shards.LeaderId) {
 					primary = fmt.Sprintf("%s://%s", shards.URIScheme, shard.HTTPAddr)
 				} else {
 					secondaries = append(secondaries, fmt.Sprintf("%s://%s", shards.URIScheme, shard.HTTPAddr))

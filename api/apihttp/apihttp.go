@@ -438,8 +438,8 @@ func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 		}
 
 		shards := &protocol.Shards{
-			NodeId:    info["nodeID"].(string),
-			LeaderId:  info["leaderID"].(string),
+			NodeId:    info["nodeID"].(uint64),
+			LeaderId:  info["leaderID"].(uint64),
 			URIScheme: protocol.Scheme(scheme),
 			Shards:    details,
 		}

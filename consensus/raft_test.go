@@ -365,6 +365,7 @@ func BenchmarkRaftAddBulk(b *testing.B) {
 
 	id, err := raftNode.WaitForLeader(10 * time.Second)
 	require.NoError(b, err, "Error waiting for leader")
+	fmt.Println("Leader ID A: ", id)
 
 	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
 	b.N = 2000000

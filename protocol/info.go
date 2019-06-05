@@ -29,8 +29,8 @@ type ShardDetail struct {
 }
 
 type Shards struct {
-	NodeId    string                 `json:"nodeId"`
-	LeaderId  string                 `json:"leaderId"`
+	NodeId    uint64                 `json:"nodeId"`
+	LeaderId  uint64                 `json:"leaderId"`
 	URIScheme Scheme                 `json:"uriScheme"`
 	Shards    map[string]ShardDetail `json:"shards"`
 }
