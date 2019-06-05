@@ -18,6 +18,7 @@ package consensus
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/bbva/qed/storage/rocks"
 	metrics_utils "github.com/bbva/qed/testutils/metrics"
 	utilrand "github.com/bbva/qed/testutils/rand"
+	"github.com/lni/dragonboat"
 	"github.com/lni/dragonboat/logger"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +57,7 @@ func snapshotsDrainer(snapshotsCh chan *protocol.Snapshot) {
 	}()
 }
 
-func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(), error) {
+func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool), error) {
 
 	storePath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/db", clusterId, nodeId)
 
@@ -84,11 +86,14 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(), e
 
 	srvCloseF := metrics_utils.StartMetricsServer(node, store)
 
-	return node, func() {
+	return node, func(clean bool) {
+		store.Close()
 		srvCloseF()
 		close(snapshotsCh)
-		os.RemoveAll(storePath)
-		os.RemoveAll(raftPath)
+		if clean {
+			os.RemoveAll(storePath)
+			os.RemoveAll(raftPath)
+		}
 	}, nil
 
 }
@@ -99,7 +104,7 @@ func Test_Raft_IsLeader(t *testing.T) {
 
 	r, clean, err := newNode(false, 0, 100, 100)
 	require.NoError(t, err, "Error creating testing node")
-	defer clean()
+	defer clean(true)
 
 	err = r.Open(true, map[string]string{"foo": "bar"})
 	require.NoError(t, err)
@@ -120,7 +125,7 @@ func TestRaft_OpenStore_CloseSingleNode(t *testing.T) {
 
 	r, clean, err := newNode(false, 0, 200, 100)
 	require.NoError(t, err, "Error creating testing node")
-	defer clean()
+	defer clean(true)
 
 	err = r.Open(true, map[string]string{"foo": "bar"})
 	require.NoError(t, err)
@@ -145,7 +150,7 @@ func Test_Raft_MultiNode_Join(t *testing.T) {
 	defer func() {
 		err := r0.Close(true)
 		require.NoError(t, err)
-		clean0()
+		clean0(true)
 	}()
 
 	err = r0.Open(true, map[string]string{"foo": "bar"})
@@ -159,7 +164,7 @@ func Test_Raft_MultiNode_Join(t *testing.T) {
 	defer func() {
 		err := r1.Close(true)
 		require.NoError(t, err)
-		clean1()
+		clean1(true)
 	}()
 
 	err = r0.Join(200, 200, r1.Addr(), map[string]string{"foo": "bar"})
@@ -182,7 +187,7 @@ func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 	defer func() {
 		err := r0.Close(true)
 		require.NoError(t, err)
-		clean0()
+		clean0(true)
 	}()
 
 	err = r0.Open(true, map[string]string{"foo": "bar"})
@@ -196,7 +201,7 @@ func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 	defer func() {
 		err := r1.Close(true)
 		require.NoError(t, err)
-		clean1()
+		clean1(true)
 	}()
 
 	err = r0.Join(200, 300, r1.Addr(), map[string]string{"foo": "bar"})
@@ -231,6 +236,54 @@ func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 
 	require.Equal(t, len(nodes), 1, "size of cluster is not correct post remove")
 	require.Equal(t, r0.Addr(), nodes[r0.ID()], "cluster does not have correct nodes post remove")
+
+}
+
+func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
+	r0, clean0, err := newNode(false, 0, 100, 400)
+	require.NoError(t, err, "Error creating raft node 0")
+
+	err = r0.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(t, err)
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	require.NoError(t, err)
+
+	// Add event
+	rand.Seed(42)
+	expectedBalloonVersion := uint64(rand.Intn(50))
+	for i := uint64(0); i < expectedBalloonVersion; i++ {
+		_, err = r0.Add([]byte(fmt.Sprintf("Test Event %d", i)))
+		require.NoError(t, err)
+	}
+
+	// request snapshot
+	resp, err := r0.nodeHost.RequestSnapshot(400, dragonboat.SnapshotOption{}, 5*time.Second)
+	require.NoError(t, err, "Error requesting snapshot")
+	_, err = waitForResp(resp, 5*time.Second)
+	require.NoError(t, err, "Error in snapshot request")
+
+	// close node
+	err = r0.Close(true)
+	require.NoError(t, err)
+	clean0(false)
+
+	// restart node and check if recovers from snapshot
+	r1, clean1, err := newNode(false, 0, 100, 400)
+	require.NoError(t, err, "Error creating raft node 1")
+	defer func() {
+		err = r1.Close(true)
+		require.NoError(t, err)
+		clean1(true)
+	}()
+
+	err = r1.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(t, err)
+
+	_, err = r1.WaitForLeader(10 * time.Second)
+	require.NoError(t, err)
+
+	require.Equal(t, expectedBalloonVersion, r1.fsm.balloon.Version(), "Error in state recovery from snapshot")
 
 }
 
