@@ -37,7 +37,7 @@ import (
 
 const (
 	retainSnapshotCount = 2
-	leaderWaitDelay     = 100 * time.Millisecond
+	leaderWaitDelay     = 1 * time.Second
 	raftLogCacheSize    = 512
 )
 
@@ -67,7 +67,7 @@ type RaftBalloonApi interface {
 type RaftBalloon struct {
 	path string // Base path for the node
 	addr string // Node addr
-	id   string // Node ID
+	id   uint64 // Node ID
 
 	clusterConfig  config.Config
 	nodeHostConfig config.NodeHostConfig
@@ -122,7 +122,7 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 		clusterConfig:  clusterConfig,
 		nodeHostConfig: nodeHostConfig,
 		nodeHost:       nodeHost,
-		id:             fmt.Sprintf("node-%d", nodeId),
+		id:             nodeId,
 		done:           make(chan struct{}),
 		fsm:            fsm,
 		snapshotsCh:    snapshotsCh,
@@ -148,7 +148,7 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 	peers := make(map[uint64]string)
 
 	if bootstrap {
-		peers[1] = b.addr
+		peers[b.id] = b.addr
 	}
 
 	fsmFactory := func(x, y uint64) statemachine.IOnDiskStateMachine { return b.fsm }
@@ -181,6 +181,7 @@ func (b *RaftBalloon) Close(wait bool) error {
 
 	b.metrics = nil
 
+	// nodeHost.Close() calls FSM close
 	// Close FSM
 	// b.fsm.Close()
 	// b.fsm = nil
@@ -196,7 +197,15 @@ func waitForResp(s *dragonboat.RequestState, timeout time.Duration) (*statemachi
 				result := r.GetResult()
 				return &result, nil
 			}
-			return nil, fmt.Errorf("Request was processed but not completed succesfully")
+			if r.Timeout() {
+				return nil, fmt.Errorf("Request timed out while processing")
+			}
+			if r.Rejected() {
+				return nil, fmt.Errorf("Request rejected. Session is probably invalid.")
+			}
+			if r.Terminated() {
+				return nil, fmt.Errorf("Request terminated because cluster is shutting down.")
+			}
 		case <-time.After(timeout):
 			return nil, fmt.Errorf("timeout")
 		}
@@ -216,6 +225,7 @@ func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[s
 	}
 
 	log.Infof("received join request for remote node %s at %s", nodeId, addr)
+	fmt.Println(clusterId, nodeId, addr, m.ConfigChangeID, 1*time.Second)
 	resp, err := b.nodeHost.RequestAddNode(clusterId, nodeId, addr, m.ConfigChangeID, 1*time.Second)
 
 	_, err = waitForResp(resp, 1*time.Second)
@@ -229,18 +239,26 @@ func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[s
 
 // Wait until node becomes leader or time is out
 func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (uint64, error) {
+	var err error
+	var id uint64
+	var ok bool
+
 	tck := time.NewTicker(leaderWaitDelay)
 	defer tck.Stop()
+
+	timeoutTck := time.NewTicker(timeout)
+	defer timeoutTck.Stop()
 
 	for {
 		select {
 		case <-tck.C:
-			id, ok, err := b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
+			id, ok, err = b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
 			if ok && err == nil {
 				return id, nil
 			}
-		case <-time.After(timeout):
-			return 0, fmt.Errorf("timeout expired")
+
+		case <-timeoutTck.C:
+			return 0, fmt.Errorf("timeout expired: %v", err)
 		}
 	}
 }
@@ -274,7 +292,7 @@ func (b *RaftBalloon) LeaderAddr() (string, error) {
 }
 
 // ID returns the Raft ID of the store.
-func (b *RaftBalloon) ID() string {
+func (b *RaftBalloon) ID() uint64 {
 	return b.id
 }
 
@@ -290,7 +308,7 @@ func (b *RaftBalloon) LeaderID() (uint64, error) {
 
 // Nodes returns the slice of nodes in the cluster, sorted by ID ascending.
 func (b *RaftBalloon) Nodes() (map[uint64]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	m, err := b.nodeHost.GetClusterMembership(ctx, b.clusterConfig.ClusterID)
 	if err != nil {
@@ -323,15 +341,8 @@ func (b *RaftBalloon) remove(id uint64) error {
 
 	resp, err := b.nodeHost.RequestDeleteNode(b.clusterConfig.ClusterID, id, m.ConfigChangeID, 1*time.Second)
 
-	for {
-		select {
-		case <-resp.CompletedC:
-			return nil
-		case <-ctx.Done():
-			return fmt.Errorf("Timedout requesting deletion")
-		}
-
-	}
+	_, err = waitForResp(resp, 1*time.Second)
+	return err
 }
 
 // TODO Improve info structure.

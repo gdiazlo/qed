@@ -97,7 +97,7 @@ func Test_Raft_IsLeader(t *testing.T) {
 
 	log.SetLogger("Test_Raft_IsLeader", log.SILENT)
 
-	r, clean, err := newNode(false, 0, 1, 1)
+	r, clean, err := newNode(false, 0, 100, 100)
 	require.NoError(t, err, "Error creating testing node")
 	defer clean()
 
@@ -116,9 +116,9 @@ func Test_Raft_IsLeader(t *testing.T) {
 
 }
 
-func Test_Raft_OpenStore_CloseSingleNode(t *testing.T) {
+func TestRaft_OpenStore_CloseSingleNode(t *testing.T) {
 
-	r, clean, err := newNode(false, 0, 1, 1)
+	r, clean, err := newNode(false, 0, 200, 100)
 	require.NoError(t, err, "Error creating testing node")
 	defer clean()
 
@@ -133,6 +133,104 @@ func Test_Raft_OpenStore_CloseSingleNode(t *testing.T) {
 
 	err = r.Open(true, map[string]string{"foo": "bar"})
 	require.Equal(t, err, ErrBalloonInvalidState, err, "incorrect error returned on re-open attempt")
+
+}
+
+func Test_Raft_MultiNode_Join(t *testing.T) {
+
+	log.SetLogger("Test_Raft_MultiNodeJoin", log.SILENT)
+
+	r0, clean0, err := newNode(false, 0, 100, 200)
+	require.NoError(t, err, "Error creating raft node 0")
+	defer func() {
+		err := r0.Close(true)
+		require.NoError(t, err)
+		clean0()
+	}()
+
+	err = r0.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error opening raft node 0")
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	require.NoError(t, err, "Error waiting for leader")
+
+	r1, clean1, err := newNode(false, 1, 200, 200)
+	require.NoError(t, err, "Error creating raft node 1")
+	defer func() {
+		err := r1.Close(true)
+		require.NoError(t, err)
+		clean1()
+	}()
+
+	err = r0.Join(200, 200, r1.Addr(), map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error joining raft node 0")
+
+	err = r1.Open(false, map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error opening raft node 1")
+
+	// This Nodes() seems to work only agains the leader
+	// TODO: test this further
+	n0, err := r0.Nodes()
+	require.NoError(t, err, "Error getting node list from raft node 0")
+	require.Equal(t, len(n0), 2, "Number of nodes must be 2")
+}
+
+func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
+
+	r0, clean0, err := newNode(false, 0, 100, 300)
+	require.NoError(t, err, "Error creating raft node 0")
+	defer func() {
+		err := r0.Close(true)
+		require.NoError(t, err)
+		clean0()
+	}()
+
+	err = r0.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(t, err)
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	require.NoError(t, err)
+
+	r1, clean1, err := newNode(false, 1, 200, 300)
+	require.NoError(t, err, "Error creating raft node 1")
+	defer func() {
+		err := r1.Close(true)
+		require.NoError(t, err)
+		clean1()
+	}()
+
+	err = r0.Join(200, 300, r1.Addr(), map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error joining raft node 0")
+
+	err = r1.Open(false, map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error opening raft node 1")
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	require.NoError(t, err)
+
+	// Check leader state on follower.
+	leaderAddr, err := r1.LeaderAddr()
+	require.NoError(t, err, "Error getting leader address")
+	require.Equal(t, leaderAddr, r0.Addr(), "wrong leader address returned")
+
+	id, err := r1.LeaderID()
+	require.NoError(t, err)
+
+	require.Equal(t, id, r0.ID(), "wrong leader ID returned")
+
+	n0, err := r0.Nodes()
+	require.NoError(t, err, "Error getting node list from raft node 0")
+	require.Equal(t, len(n0), 2, "Number of nodes must be 2")
+
+	// Remove a node.
+	err = r0.Remove(r1.ID())
+	require.NoError(t, err)
+
+	nodes, err := r0.Nodes()
+	require.NoError(t, err)
+
+	require.Equal(t, len(nodes), 1, "size of cluster is not correct post remove")
+	require.Equal(t, r0.Addr(), nodes[r0.ID()], "cluster does not have correct nodes post remove")
 
 }
 
