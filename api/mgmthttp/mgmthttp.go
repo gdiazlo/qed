@@ -21,19 +21,19 @@ import (
 	"net/http"
 
 	"github.com/bbva/qed/api/apihttp"
-	"github.com/bbva/qed/raftwal"
+	"github.com/bbva/qed/consensus"
 )
 
 // NewMgmtHttp will return a mux server with the endpoint required to
 // tamper the server. it's a internal debug implementation. Running a server
 // with this enabled will run useless the qed server.
-func NewMgmtHttp(raftBalloon raftwal.RaftBalloonApi) *http.ServeMux {
+func NewMgmtHttp(raftBalloon consensus.RaftBalloonApi) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/join", joinHandle(raftBalloon))
 	return mux
 }
 
-func joinHandle(raftBalloon raftwal.RaftBalloonApi) http.HandlerFunc {
+func joinHandle(raftBalloon consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		// Make sure we can only be called with an HTTP POST request.
@@ -72,7 +72,13 @@ func joinHandle(raftBalloon raftwal.RaftBalloonApi) http.HandlerFunc {
 			return
 		}
 
-		if err := raftBalloon.Join(nodeId, clusterId, remoteAddr); err != nil {
+		metadata, ok := body["meta"].(map[string]string)
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if err := raftBalloon.Join(nodeId, clusterId, remoteAddr, metadata); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

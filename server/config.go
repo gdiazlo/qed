@@ -31,7 +31,11 @@ type Config struct {
 
 	// Unique name for this node. It identifies itself both in raft and
 	// gossip clusters. If not set, fallback to hostname.
-	NodeID string
+	NodeId uint64
+
+	// Unique name for the node's cluster. It identifies this cluster against
+	// other clusters which might be present on a given node.
+	ClusterId uint64
 
 	// TLS server bind address/port.
 	HTTPAddr string
@@ -82,13 +86,13 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
-	hostname, _ := os.Hostname()
 	currentDir := getCurrentDir()
 
 	return &Config{
 		Log:               "info",
 		APIKey:            "",
-		NodeID:            hostname,
+		NodeId:            100, // dragonboat does not support 0 as node id
+		ClusterId:         100,
 		HTTPAddr:          "127.0.0.1:8800",
 		RaftAddr:          "127.0.0.1:8500",
 		MgmtAddr:          "127.0.0.1:8700",

@@ -287,6 +287,41 @@ func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
 
 }
 
+func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
+
+	log.SetLogger("Test_Raft_MultiNode_WithMetadata", log.SILENT)
+
+	r0, clean0, err := newNode(false, 2, 100, 200)
+	require.NoError(t, err, "Error creating raft node 0")
+	defer func() {
+		err := r0.Close(true)
+		require.NoError(t, err)
+		clean0(true)
+	}()
+
+	err = r0.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error opening raft node 0")
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	require.NoError(t, err, "Error waiting for leader")
+
+	r1, clean1, err := newNode(false, 3, 200, 200)
+	require.NoError(t, err, "Error creating raft node 1")
+	defer func() {
+		err := r1.Close(true)
+		require.NoError(t, err)
+		clean1(true)
+	}()
+
+	err = r0.Join(200, 200, r1.Addr(), map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error joining raft node 0")
+
+	err = r1.Open(false, map[string]string{"foo": "bar"})
+	require.NoError(t, err, "Error opening raft node 1")
+
+	require.Equal(t, r0.Info()["meta"], r1.Info()["meta"], "Both nodes must have the same metadata.")
+}
+
 func BenchmarkRaftAdd(b *testing.B) {
 
 	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
@@ -313,4 +348,34 @@ func BenchmarkRaftAdd(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+}
+
+func BenchmarkRaftAddBulk(b *testing.B) {
+
+	log.SetLogger("BenchmarkRaftAddBulk", log.SILENT)
+
+	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
+
+	raftNode, _, err := newNode(false, 0, 1, 1)
+	require.NoError(b, err, "Error creating testing node")
+	// defer clean()
+
+	err = raftNode.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(b, err)
+
+	id, err := raftNode.WaitForLeader(10 * time.Second)
+	require.NoError(b, err, "Error waiting for leader")
+
+	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
+	b.N = 2000000
+	b.ResetTimer()
+	b.SetParallelism(100)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			events := [][]byte{utilrand.Bytes(128)}
+			_, err := raftNode.AddBulk(events)
+			require.NoError(b, err)
+		}
+	})
+
 }

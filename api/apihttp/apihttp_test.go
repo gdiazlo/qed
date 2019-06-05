@@ -29,11 +29,13 @@ import (
 	"github.com/bbva/qed/balloon"
 	"github.com/bbva/qed/balloon/history"
 	"github.com/bbva/qed/balloon/hyper"
+	"github.com/bbva/qed/consensus"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/protocol"
-	"github.com/bbva/qed/raftwal"
+	"github.com/bbva/qed/storage/rocks"
+	metrics_utils "github.com/bbva/qed/testutils/metrics"
 	"github.com/bbva/qed/testutils/rand"
-	storage_utils "github.com/bbva/qed/testutils/storage"
+	"github.com/stretchr/testify/require"
 	assert "github.com/stretchr/testify/require"
 )
 
@@ -69,7 +71,7 @@ func (b fakeRaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 	}, nil
 }
 
-func (b fakeRaftBalloon) Join(nodeID, addr string, metadata map[string]string) error {
+func (b fakeRaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error {
 	return nil
 }
 
@@ -554,29 +556,75 @@ func BenchmarkAuth(b *testing.B) {
 	}
 }
 
-func newNodeBench(b *testing.B, id int) (*raftwal.RaftBalloon, func()) {
-	rocksdbPath := fmt.Sprintf("/var/tmp/raft-test/node%d/rocksdb", id)
+func snapshotsDrainer(snapshotsCh chan *protocol.Snapshot) {
+	go func() {
+		for {
+			_, ok := <-snapshotsCh
+			if !ok {
+				return
+			}
+		}
+	}()
+}
 
-	os.MkdirAll(rocksdbPath, os.FileMode(0755))
-	rocks, closeF := storage_utils.OpenRocksDBStore(b, rocksdbPath)
+func raftAddr(id uint64) string {
+	return fmt.Sprintf("127.0.0.1:1830%d", id)
+}
 
-	raftPath := fmt.Sprintf("/var/tmp/raft-test/node%d/raft", id)
-	os.MkdirAll(raftPath, os.FileMode(0755))
-	r, err := raftwal.NewRaftBalloon(raftPath, ":8301", fmt.Sprintf("%d", id), rocks, make(chan *protocol.Snapshot))
-	assert.NoError(b, err)
+func newNode(join bool, port, nodeId, clusterId uint64) (*consensus.RaftBalloon, func(bool), error) {
 
-	return r, closeF
+	storePath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/db", clusterId, nodeId)
+
+	err := os.MkdirAll(storePath, os.FileMode(0755))
+	if err != nil {
+		return nil, nil, err
+	}
+	store, err := rocks.NewRocksDBStore(storePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	raftPath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/raft", clusterId, nodeId)
+	err = os.MkdirAll(raftPath, os.FileMode(0755))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	snapshotsCh := make(chan *protocol.Snapshot, 10000)
+	snapshotsDrainer(snapshotsCh)
+
+	node, err := consensus.NewRaftBalloon(raftPath, raftAddr(port), clusterId, nodeId, store, snapshotsCh)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	srvCloseF := metrics_utils.StartMetricsServer(node, store)
+
+	return node, func(clean bool) {
+		store.Close()
+		srvCloseF()
+		close(snapshotsCh)
+		if clean {
+			os.RemoveAll(storePath)
+			os.RemoveAll(raftPath)
+		}
+	}, nil
 
 }
+
 func BenchmarkApiAdd(b *testing.B) {
 
-	r, clean := newNodeBench(b, 1)
-	defer clean()
+	raftNode, _, err := newNode(false, 0, 100, 100)
+	require.NoError(b, err, "Error creating testing node")
+	// defer clean()
 
-	err := r.Open(true, map[string]string{"foo": "bar"})
-	assert.NoError(b, err)
+	err = raftNode.Open(true, map[string]string{"foo": "bar"})
+	require.NoError(b, err)
 
-	handler := Add(r)
+	_, err = raftNode.WaitForLeader(10 * time.Second)
+	require.NoError(b, err, "Error waiting for leader")
+
+	handler := Add(raftNode)
 
 	time.Sleep(2 * time.Second)
 	b.ResetTimer()

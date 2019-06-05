@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/bbva/qed/balloon"
+	"github.com/bbva/qed/consensus"
 	"github.com/bbva/qed/log"
 	"github.com/bbva/qed/protocol"
-	"github.com/bbva/qed/raftwal"
 )
 
 // HealthCheckResponse contains the response from HealthCheckHandler.
@@ -70,7 +70,7 @@ func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 //     "Version": 1,
 //     "Event": "VGhpcyBpcyBteSBmaXJzdCBldmVudA=="
 //   }
-func Add(api raftwal.RaftBalloonApi) http.HandlerFunc {
+func Add(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		// Make sure we can only be called with an HTTP POST request.
@@ -129,7 +129,7 @@ func Add(api raftwal.RaftBalloonApi) http.HandlerFunc {
 //		},
 //		...
 //	]
-func AddBulk(api raftwal.RaftBalloonApi) http.HandlerFunc {
+func AddBulk(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		// Make sure we can only be called with an HTTP POST request.
@@ -180,7 +180,7 @@ func AddBulk(api raftwal.RaftBalloonApi) http.HandlerFunc {
 //     "queryVersion": "1",
 //     "actualVersion": "2",
 //   }
-func Membership(api raftwal.RaftBalloonApi) http.HandlerFunc {
+func Membership(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var proof *balloon.MembershipProof
 		var err error
@@ -244,7 +244,7 @@ func Membership(api raftwal.RaftBalloonApi) http.HandlerFunc {
 //     "queryVersion": "1",
 //     "actualVersion": "2",
 //   }
-func DigestMembership(api raftwal.RaftBalloonApi) http.HandlerFunc {
+func DigestMembership(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var proof *balloon.MembershipProof
 		var err error
@@ -303,7 +303,7 @@ func DigestMembership(api raftwal.RaftBalloonApi) http.HandlerFunc {
 //     "end": "8",
 //     "auditPath": ["<truncated for clarity in docs>"]
 //   }
-func Incremental(api raftwal.RaftBalloonApi) http.HandlerFunc {
+func Incremental(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		// Make sure we can only be called with an HTTP POST request.
@@ -360,7 +360,7 @@ func AuthHandlerMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 //	/health-check -> HealthCheckHandler
 //	/events -> Add
 //	/proofs/membership -> Membership
-func NewApiHttp(balloon raftwal.RaftBalloonApi) *http.ServeMux {
+func NewApiHttp(balloon consensus.RaftBalloonApi) *http.ServeMux {
 
 	api := http.NewServeMux()
 	api.HandleFunc("/healthcheck", AuthHandlerMiddleware(HealthCheckHandler))
@@ -412,7 +412,7 @@ func LogHandler(handle http.Handler) http.HandlerFunc {
 	}
 }
 
-func InfoShardsHandler(balloon raftwal.RaftBalloonApi) http.HandlerFunc {
+func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.Header().Set("Allow", "GET")

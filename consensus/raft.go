@@ -55,11 +55,13 @@ var (
 type RaftBalloonApi interface {
 	Add(event []byte) (*balloon.Snapshot, error)
 	AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error)
-	QueryDigestMembership(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error)
-	QueryMembership(event []byte, version uint64) (*balloon.MembershipProof, error)
+	QueryDigestMembershipConsistency(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error)
+	QueryMembershipConsistency(event []byte, version uint64) (*balloon.MembershipProof, error)
+	QueryDigestMembership(keyDigest hashing.Digest) (*balloon.MembershipProof, error)
+	QueryMembership(event []byte) (*balloon.MembershipProof, error)
 	QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error)
 	// Join joins the node, identified by nodeID and reachable at addr, to the cluster
-	Join(nodeID, addr string, metadata map[string]string) error
+	Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error
 	Info() map[string]interface{}
 }
 
@@ -357,7 +359,7 @@ func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
 }
 
 func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
-	var snapshot balloon.Snapshot
+	var snapshot []*balloon.Snapshot
 
 	cmd, err := commands.Encode(commands.AddEventCommandType, &commands.AddEventCommand{Event: event})
 	if err != nil {
@@ -377,15 +379,77 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 	}
 
 	b.metrics.Adds.Inc()
-	err = decodeMsgPack(result.Data[1:], &snapshot)
+	err = decodeMsgPack(result.Data, &snapshot)
 	if err != nil {
 		return nil, err
 	}
 
-	p := protocol.Snapshot(snapshot)
+	p := protocol.Snapshot(*snapshot[0])
 
 	//Send snapshot to the snapshot channel
 	b.snapshotsCh <- &p // TODO move this to an upper layer (shard manager?)
 
-	return &snapshot, nil
+	return snapshot[0], nil
+}
+
+func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
+	var snapshots []*balloon.Snapshot
+
+	cmd, err := commands.Encode(commands.AddEventCommandType, &commands.AddEventsBulkCommand{Events: bulk})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode command: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	session := b.nodeHost.GetNoOPSession(b.clusterConfig.ClusterID)
+
+	// defer b.nodeHost.CloseSession(ctx, session)
+
+	result, err := b.nodeHost.SyncPropose(ctx, session, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	b.metrics.Adds.Add(float64(len(bulk)))
+
+	err = decodeMsgPack(result.Data, snapshots)
+	if err != nil {
+		return nil, err
+	}
+
+	//Send snapshot to the snapshot channel
+	// TODO move this to an upper layer (shard manager?)
+	for _, s := range snapshots {
+		p := protocol.Snapshot(*s)
+		b.snapshotsCh <- &p
+	}
+
+	return snapshots, nil
+}
+
+func (b *RaftBalloon) QueryDigestMembershipConsistency(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error) {
+	b.metrics.DigestMembershipQueries.Inc()
+	return b.fsm.QueryDigestMembershipConsistency(keyDigest, version)
+}
+
+func (b *RaftBalloon) QueryMembershipConsistency(event []byte, version uint64) (*balloon.MembershipProof, error) {
+	b.metrics.MembershipQueries.Inc()
+	return b.fsm.QueryMembershipConsistency(event, version)
+}
+
+func (b *RaftBalloon) QueryDigestMembership(keyDigest hashing.Digest) (*balloon.MembershipProof, error) {
+	b.metrics.DigestMembershipQueries.Inc()
+	return b.fsm.QueryDigestMembership(keyDigest)
+}
+
+func (b *RaftBalloon) QueryMembership(event []byte) (*balloon.MembershipProof, error) {
+	b.metrics.MembershipQueries.Inc()
+	return b.fsm.QueryMembership(event)
+}
+
+func (b *RaftBalloon) QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error) {
+	b.metrics.IncrementalQueries.Inc()
+	return b.fsm.QueryConsistency(start, end)
 }

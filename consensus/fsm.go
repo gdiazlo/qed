@@ -17,7 +17,6 @@
 package consensus
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"sync"
@@ -26,7 +25,6 @@ import (
 	"github.com/bbva/qed/consensus/commands"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
-	"github.com/hashicorp/go-msgpack/codec"
 
 	sm "github.com/lni/dragonboat/statemachine"
 	"github.com/prometheus/common/log"
@@ -510,19 +508,22 @@ func loadState(s storage.ManagedStore) (*fsmState, error) {
 	return &state, err
 }
 
-// Decode reverses the encode operation on a byte slice input
-func decodeMsgPack(buf []byte, out interface{}) error {
-	r := bytes.NewBuffer(buf)
-	hd := codec.MsgpackHandle{}
-	dec := codec.NewDecoder(r, &hd)
-	return dec.Decode(out)
+func (fsm *BalloonFSM) QueryDigestMembershipConsistency(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error) {
+	return fsm.balloon.QueryDigestMembershipConsistency(keyDigest, version)
 }
 
-// Encode writes an encoded object to a new bytes buffer
-func encodeMsgPack(in interface{}) (*bytes.Buffer, error) {
-	buf := bytes.NewBuffer(nil)
-	hd := codec.MsgpackHandle{}
-	enc := codec.NewEncoder(buf, &hd)
-	err := enc.Encode(in)
-	return buf, err
+func (fsm *BalloonFSM) QueryMembershipConsistency(event []byte, version uint64) (*balloon.MembershipProof, error) {
+	return fsm.balloon.QueryMembershipConsistency(event, version)
+}
+
+func (fsm *BalloonFSM) QueryDigestMembership(keyDigest hashing.Digest) (*balloon.MembershipProof, error) {
+	return fsm.balloon.QueryDigestMembership(keyDigest)
+}
+
+func (fsm *BalloonFSM) QueryMembership(event []byte) (*balloon.MembershipProof, error) {
+	return fsm.balloon.QueryMembership(event)
+}
+
+func (fsm *BalloonFSM) QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error) {
+	return fsm.balloon.QueryConsistency(start, end)
 }

@@ -33,11 +33,11 @@ import (
 
 	"github.com/bbva/qed/api/apihttp"
 	"github.com/bbva/qed/api/mgmthttp"
+	"github.com/bbva/qed/consensus"
 	"github.com/bbva/qed/gossip"
 	"github.com/bbva/qed/log"
 	"github.com/bbva/qed/metrics"
 	"github.com/bbva/qed/protocol"
-	"github.com/bbva/qed/raftwal"
 	"github.com/bbva/qed/sign"
 	"github.com/bbva/qed/storage/rocks"
 )
@@ -49,7 +49,7 @@ type Server struct {
 
 	httpServer         *http.Server
 	mgmtServer         *http.Server
-	raftBalloon        *raftwal.RaftBalloon
+	raftBalloon        *consensus.RaftBalloon
 	metrics            *serverMetrics
 	metricsServer      *metrics.Server
 	prometheusRegistry *prometheus.Registry
@@ -134,7 +134,7 @@ func NewServer(conf *Config) (*Server, error) {
 	config := gossip.DefaultConfig()
 	config.BindAddr = conf.GossipAddr
 	config.Role = "server"
-	config.NodeName = conf.NodeID
+	config.NodeName = fmt.Sprintf("node-%d", conf.NodeId)
 
 	server.agent, err = gossip.NewAgentFromConfig(config)
 	if err != nil {
@@ -148,7 +148,7 @@ func NewServer(conf *Config) (*Server, error) {
 	server.sender = NewSender(server.agent, server.signer, 500, 2, 3)
 
 	// Create RaftBalloon
-	server.raftBalloon, err = raftwal.NewRaftBalloon(conf.RaftPath, conf.RaftAddr, conf.NodeID, store, server.snapshotsCh)
+	server.raftBalloon, err = consensus.NewRaftBalloon(conf.RaftPath, conf.RaftAddr, conf.ClusterId, conf.NodeId, store, server.snapshotsCh)
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +177,12 @@ func NewServer(conf *Config) (*Server, error) {
 	return server, nil
 }
 
-func join(joinAddr, raftAddr string, nodeId, clusterId uint64) error {
+func join(joinAddr, raftAddr string, nodeId, clusterId uint64, meta map[string]string) error {
 	body := make(map[string]interface{})
 	body["addr"] = raftAddr
 	body["nodeId"] = nodeId
 	body["clusterId"] = clusterId
+	body["meta"] = meta
 
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -201,7 +202,7 @@ func join(joinAddr, raftAddr string, nodeId, clusterId uint64) error {
 // Start will start the server in a non-blockable fashion.
 func (s *Server) Start() error {
 	s.metrics.Instances.Inc()
-	log.Infof("Starting QED server %s\n", s.conf.NodeID)
+	log.Infof("Starting QED server %s\n", s.conf.NodeId)
 
 	metadata := map[string]string{}
 	metadata["HTTPAddr"] = s.conf.HTTPAddr
@@ -245,7 +246,7 @@ func (s *Server) Start() error {
 	if !s.bootstrap {
 		for _, addr := range s.conf.RaftJoinAddr {
 			log.Debug("	* Joining existent cluster QED MGMT HTTP server in addr: ", s.conf.MgmtAddr)
-			if err := join(addr, s.conf.RaftAddr, s.conf.NodeID, s.conf.ClusterID, metadata); err != nil {
+			if err := join(addr, s.conf.RaftAddr, s.conf.NodeId, s.conf.ClusterId, metadata); err != nil {
 				log.Fatalf("failed to join node at %s: %s", addr, err.Error())
 			}
 		}
@@ -262,7 +263,7 @@ func (s *Server) Start() error {
 // Stop will close all the channels from the mux servers.
 func (s *Server) Stop() error {
 	s.metrics.Instances.Dec()
-	log.Infof("\nShutting down QED server %s", s.conf.NodeID)
+	log.Infof("\nShutting down QED server %s", s.conf.NodeId)
 
 	log.Debugf("Metrics enabled: stopping server...")
 	s.metricsServer.Shutdown()
