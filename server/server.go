@@ -213,7 +213,7 @@ func (s *Server) Start() error {
 
 	if s.conf.EnableTLS {
 		go func() {
-			log.Debug("	* Starting QED API HTTPS server in addr: ", s.conf.HTTPAddr)
+			log.Debugf("	* Starting QED API HTTPS server in addr: %v", s.conf.HTTPAddr)
 			err := s.httpServer.ListenAndServeTLS(
 				s.conf.SSLCertificate,
 				s.conf.SSLCertificateKey,
@@ -224,7 +224,7 @@ func (s *Server) Start() error {
 		}()
 	} else {
 		go func() {
-			log.Debug("	* Starting QED API HTTP server in addr: ", s.conf.HTTPAddr)
+			log.Debugf("	* Starting QED API HTTP server in addr: %v", s.conf.HTTPAddr)
 			if err := s.httpServer.ListenAndServe(); err != http.ErrServerClosed {
 				log.Errorf("Can't start QED API HTTP Server: %s", err)
 			}
@@ -232,7 +232,7 @@ func (s *Server) Start() error {
 	}
 
 	go func() {
-		log.Debug("	* Starting QED MGMT HTTP server in addr: ", s.conf.MgmtAddr)
+		log.Debugf("	* Starting QED MGMT HTTP server in addr: %v", s.conf.MgmtAddr)
 		if err := s.mgmtServer.ListenAndServe(); err != http.ErrServerClosed {
 			log.Errorf("Can't start QED MGMT HTTP Server: %s", err)
 		}
@@ -246,7 +246,7 @@ func (s *Server) Start() error {
 
 	if !s.bootstrap {
 		for _, addr := range s.conf.RaftJoinAddr {
-			log.Debug("	* Joining existent cluster QED MGMT HTTP server in addr: ", s.conf.MgmtAddr)
+			log.Debugf("	* Joining existent cluster QED MGMT HTTP server in addr: %v", addr)
 			if err := join(addr, s.conf.RaftAddr, s.conf.NodeId, s.conf.ClusterId, metadata); err != nil {
 				log.Fatalf("failed to join node at %s: %s", addr, err.Error())
 			}
@@ -259,14 +259,18 @@ func (s *Server) Start() error {
 	}
 
 	_, err = s.raftBalloon.WaitForLeader(10 * time.Second)
+	if err != nil {
+		return fmt.Errorf("Server started, but there is no leader becasue: %v", err)
+	}
 
-	return err
+	return nil
 }
 
 // Stop will close all the channels from the mux servers.
 func (s *Server) Stop() error {
 	s.metrics.Instances.Dec()
-	log.Infof("\nShutting down QED server %d", s.conf.NodeId)
+
+	log.Infof("\nShutting down QED server %v", s.conf.NodeId)
 
 	log.Debugf("Metrics enabled: stopping server...")
 	s.metricsServer.Shutdown()
@@ -301,7 +305,7 @@ func (s *Server) Stop() error {
 
 	close(s.snapshotsCh)
 
-	log.Debugf("Done. Exiting...\n")
+	log.Debugf("Done. Exiting...")
 	return nil
 }
 

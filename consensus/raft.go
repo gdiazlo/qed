@@ -145,7 +145,7 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 		return ErrBalloonInvalidState
 	}
 
-	log.Infof("opening balloon with node ID %d", b.id)
+	log.Infof("opening balloon with node ID %v", b.id)
 
 	peers := make(map[uint64]string)
 
@@ -217,6 +217,7 @@ func waitForResp(s *dragonboat.RequestState, timeout time.Duration) (*statemachi
 // This must be called from the Leader or it will fail.
 func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error {
 
+	log.Infof("received join request for remote node %s at %s", nodeId, addr)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	m, err := b.nodeHost.GetClusterMembership(ctx, clusterId)
@@ -224,8 +225,6 @@ func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[s
 		return err
 	}
 
-	log.Infof("received join request for remote node %s at %s", nodeId, addr)
-	fmt.Println(clusterId, nodeId, addr, m.ConfigChangeID, 1*time.Second)
 	resp, err := b.nodeHost.RequestAddNode(clusterId, nodeId, addr, m.ConfigChangeID, 1*time.Second)
 
 	_, err = waitForResp(resp, 1*time.Second)
@@ -258,7 +257,7 @@ func (b *RaftBalloon) WaitForLeader(timeout time.Duration) (uint64, error) {
 			}
 
 		case <-timeoutTck.C:
-			return 0, fmt.Errorf("timeout expired: %v", err)
+			return 0, fmt.Errorf("timeout expired id=%v ok=%v err=%v", id, ok, err)
 		}
 	}
 }
