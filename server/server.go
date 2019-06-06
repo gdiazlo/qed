@@ -24,7 +24,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -189,8 +188,6 @@ func join(joinAddr, raftAddr string, nodeId, clusterId uint64) error {
 	}
 
 	resp, err := http.Post(fmt.Sprintf("http://%s/join", joinAddr), "application-type/json", bytes.NewReader(b))
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-
 	if err != nil {
 		return err
 	}
