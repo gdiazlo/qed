@@ -28,6 +28,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -257,7 +258,9 @@ func (s *Server) Start() error {
 		return err
 	}
 
-	return nil
+	_, err = s.raftBalloon.WaitForLeader(10 * time.Second)
+
+	return err
 }
 
 // Stop will close all the channels from the mux servers.
