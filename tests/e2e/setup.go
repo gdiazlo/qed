@@ -100,7 +100,7 @@ func setupStore(t *testing.T) (scope.TestF, scope.TestF) {
 
 // This function returns a server config object based on the function parameters:
 // 	- nodeId: used to generate diffent listen addrs when starting multiple servers
-//	      when id > 0, the node is set up to join the 1 node to its default port
+//	      when id > 1, the node is set up to join the 1 node to its default port
 //	- pathDB: path to where the database will store its files
 //	- signPath: oath to where the signer key is stored
 //	- tlsPath: path to where the tls cer and key are stored
@@ -116,8 +116,8 @@ func configQedServer(nodeId, clusterId uint64, pathDB, signPath, tlsPath string,
 	conf.RaftAddr = fmt.Sprintf("127.0.0.1:850%d", nodeId)
 	conf.GossipAddr = fmt.Sprintf("127.0.0.1:840%d", nodeId)
 	if nodeId > 1 {
-		conf.RaftJoinAddr = []string{"127.0.0.1:8700"}
-		conf.GossipJoinAddr = []string{"127.0.0.1:8400"}
+		conf.RaftJoinAddr = []string{"127.0.0.1:8701"}
+		conf.GossipJoinAddr = []string{"127.0.0.1:8401"}
 	}
 	conf.DBPath = pathDB + "data"
 	conf.RaftPath = pathDB + "raft"
