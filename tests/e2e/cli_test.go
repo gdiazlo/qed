@@ -57,9 +57,7 @@ func TestClientToSingleServer(t *testing.T) {
 
 			output, err := cmd.CombinedOutput()
 
-			fmt.Println(string(output))
-
-			spec.NoError(t, err, "Client returned error")
+			spec.NoError(t, err, fmt.Sprintf("Client returned error: %s", string(output)))
 		})
 
 		let(t, "Verify membership proof with an event digest", func(t *testing.T) {
@@ -83,9 +81,7 @@ func TestClientToSingleServer(t *testing.T) {
 
 			output, err := cmd.CombinedOutput()
 
-			fmt.Println(string(output))
-
-			spec.NoError(t, err, "Client returned an error")
+			spec.NoError(t, err, fmt.Sprintf("Client returned error: %s", string(output)))
 			// This check depends on the client print format
 			// which makes it fragile.
 			// IF the client returns a 0, the the command is succesfull and no
@@ -158,9 +154,7 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 
 			output, err := cmd.CombinedOutput()
 
-			fmt.Println(string(output))
-
-			spec.NoError(t, err, "Client returned error")
+			spec.NoError(t, err, fmt.Sprintf("Client returned error: %s", string(output)))
 		})
 
 		let(t, "Verify membership proof with an event digest", func(t *testing.T) {
@@ -184,9 +178,7 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 
 			output, err := cmd.CombinedOutput()
 
-			fmt.Println(string(output))
-
-			spec.NoError(t, err, "Client returned an error")
+			spec.NoError(t, err, fmt.Sprintf("Client returned error: %s", string(output)))
 			// This check depends on the client print format
 			// which makes it fragile.
 			// IF the client returns a 0, the the command is succesfull and no
@@ -241,9 +233,7 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 
 			output, err := cmd.CombinedOutput()
 
-			fmt.Println(string(output))
-
-			spec.NoError(t, err, "Client returned error")
+			spec.NoError(t, err, fmt.Sprintf("Client returned error: %s", string(output)))
 		})
 
 	})
