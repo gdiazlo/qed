@@ -18,6 +18,7 @@ package mgmthttp
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/bbva/qed/api/apihttp"
@@ -42,44 +43,38 @@ func joinHandle(raftBalloon consensus.RaftBalloonApi) http.HandlerFunc {
 			return
 		}
 
-		body := make(map[string]interface{})
+		joinRequest := make(map[string]interface{})
 
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+		if err := json.NewDecoder(r.Body).Decode(&joinRequest); err != nil {
+			http.Error(w, fmt.Sprintf("Error decoding join request: %v", err), http.StatusBadRequest)
 			return
 		}
 
-		if len(body) != 3 {
-			w.WriteHeader(http.StatusBadRequest)
+		if len(joinRequest) != 3 {
+			http.Error(w, fmt.Sprintf("There should be at least three parameters"), http.StatusBadRequest)
 			return
 		}
 
-		remoteAddr, ok := body["addr"].(string)
+		remoteAddr, ok := joinRequest["addr"].(string)
 		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Addr must be a string"), http.StatusBadRequest)
 			return
 		}
 
-		nodeId, ok := body["nodeId"].(uint64)
+		nodeId := joinRequest["nodeId"].(float64)
 		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("nodeId must be an integer: %+v", joinRequest), http.StatusBadRequest)
 			return
 		}
 
-		clusterId, ok := body["clusterId"].(uint64)
+		clusterId, ok := joinRequest["clusterId"].(float64)
 		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("clusterId must be an integer: %+v", joinRequest), http.StatusBadRequest)
 			return
 		}
 
-		metadata, ok := body["meta"].(map[string]string)
-		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		if err := raftBalloon.Join(nodeId, clusterId, remoteAddr, metadata); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+		if err := raftBalloon.Join(uint64(nodeId), uint64(clusterId), remoteAddr); err != nil {
+			http.Error(w, fmt.Sprintf("Error joining raft cluster: %v", err), http.StatusBadRequest)
 			return
 		}
 

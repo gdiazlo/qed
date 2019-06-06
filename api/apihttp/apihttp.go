@@ -402,12 +402,12 @@ func LogHandler(handle http.Handler) http.HandlerFunc {
 		handle.ServeHTTP(&writer, request)
 		latency := time.Now().Sub(start)
 
-		log.Debugf("Request: lat %d %+v", latency, request)
+		log.Debugf("Request: lat %v %+v", latency, request)
 		if writer.status >= 400 && writer.status < 500 {
-			log.Infof("Bad Request: %d %+v", latency, request)
+			log.Infof("Bad Request: %v %+v", latency, request)
 		}
 		if writer.status >= 500 {
-			log.Infof("Server error: %d %+v", latency, request)
+			log.Infof("Server error: %v %+v", latency, request)
 		}
 	}
 }
@@ -427,19 +427,24 @@ func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 			scheme = "http"
 		}
 
-		info := balloon.Info()
+		info, err := balloon.Info()
+		if err != nil {
+			err = fmt.Errorf("Error getting information: %v", err)
+			http.Error(w, err.Error(), http.StatusPreconditionFailed)
+			return
+		}
+
 		details := make(map[uint64]protocol.ShardDetail)
-		for k, v := range info["meta"].(map[uint64]map[string]string) {
-			fmt.Println(k, v)
+		for k, v := range info["nodes"].(map[uint64]string) {
 			details[k] = protocol.ShardDetail{
 				NodeId:   k,
-				HTTPAddr: v["HTTPAddr"],
+				HTTPAddr: v,
 			}
 		}
 
 		shards := &protocol.Shards{
-			NodeId:    info["nodeID"].(uint64),
-			LeaderId:  info["leaderID"].(uint64),
+			NodeId:    info["nodeId"].(uint64),
+			LeaderId:  info["leaderId"].(uint64),
 			URIScheme: protocol.Scheme(scheme),
 			Shards:    details,
 		}
