@@ -61,7 +61,7 @@ type BalloonFSM struct {
 	state   *fsmState
 
 	metaMu sync.RWMutex
-	meta   map[string]map[string]string
+	meta   map[uint64]map[string]string
 
 	restoreMu sync.RWMutex // Restore needs exclusive access to database.
 }
@@ -77,7 +77,7 @@ func NewBalloonFSM(store storage.ManagedStore, hasherF func() hashing.Hasher) (*
 		hasherF: hasherF,
 		store:   store,
 		balloon: b,
-		meta:    make(map[string]map[string]string),
+		meta:    make(map[uint64]map[string]string),
 	}, nil
 }
 
@@ -452,7 +452,7 @@ func (fsm *BalloonFSM) applyAddBulk(events [][]byte, state *fsmState) *fsmRespon
 }
 
 // Metadata returns the value for a given key, for a given node ID.
-func (fsm *BalloonFSM) Metadata(id, key string) string {
+func (fsm *BalloonFSM) Metadata(id uint64, key string) string {
 	fsm.metaMu.RLock()
 	defer fsm.metaMu.RUnlock()
 
@@ -468,7 +468,7 @@ func (fsm *BalloonFSM) Metadata(id, key string) string {
 
 // setMetadata adds the metadata md to any existing metadata for
 // the given node ID.
-func (fsm *BalloonFSM) setMetadata(id string, md map[string]string) *commands.MetadataSetCommand {
+func (fsm *BalloonFSM) setMetadata(id uint64, md map[string]string) *commands.MetadataSetCommand {
 	// Check local data first.
 	if func() bool {
 		fsm.metaMu.RLock()

@@ -42,12 +42,12 @@ type AddEventsBulkCommand struct {
 }
 
 type MetadataSetCommand struct {
-	Id   string
+	Id   uint64
 	Data map[string]string
 }
 
 type MetadataDeleteCommand struct {
-	Id string
+	Id uint64
 }
 
 // msgpackHandle is a shared handle for encoding/decoding of structs
