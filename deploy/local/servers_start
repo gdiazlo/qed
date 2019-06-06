@@ -28,14 +28,17 @@ LEADER_CONFIG+=('--gossip-addr 127.0.0.1:840${i}')
 LEADER_CONFIG+=('--http-addr 127.0.0.1:880${i}')
 LEADER_CONFIG+=('--metrics-addr 127.0.0.1:860${i}')
 LEADER_CONFIG+=('--mgmt-addr 127.0.0.1:870${i}')
-LEADER_CONFIG+=('--node-id server${i}')
+LEADER_CONFIG+=('--node-id ${i}')
 LEADER_CONFIG+=('--private-key-path /var/tmp/qed_ed25519')
 LEADER_CONFIG+=('--raft-addr 127.0.0.1:850${i}')
 LEADER_CONFIG+=('--raft-path /var/tmp/qed${i}/wal')
+LEADER_CONFIG+=('--enable-profiling')
+LEADER_CONFIG+=('--profiling-addr 127.0.0.1:606${i}')
 
 FOLLOWER_CONFIG=("${LEADER_CONFIG[@]}")
-FOLLOWER_CONFIG+=('--raft-join-addr 127.0.0.1:8700')
-FOLLOWER_CONFIG+=('--gossip-join-addr 127.0.0.1:8400')
+FOLLOWER_CONFIG+=('--raft-join-addr 127.0.0.1:8701')
+FOLLOWER_CONFIG+=('--gossip-join-addr 127.0.0.1:8401')
+
 
 # Port 6060 conflict if followers and leader have the following option enabled.
 LEADER_CONFIG+=('--enable-profiling')
