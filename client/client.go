@@ -490,7 +490,7 @@ func (c *HTTPClient) AddBulk(events []string) ([]*protocol.Snapshot, error) {
 		return nil, err
 	}
 
-	bs := []*protocol.Snapshot{}
+	bs := make([]*protocol.Snapshot, 0)
 	err = json.Unmarshal(body, &bs)
 	if err != nil {
 		return nil, err

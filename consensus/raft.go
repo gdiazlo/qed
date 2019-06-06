@@ -393,9 +393,8 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 }
 
 func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
-	var snapshots []*balloon.Snapshot
 
-	cmd, err := commands.Encode(commands.AddEventCommandType, &commands.AddEventsBulkCommand{Events: bulk})
+	cmd, err := commands.Encode(commands.AddEventsBulkCommandType, &commands.AddEventsBulkCommand{Events: bulk})
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode command: %v", err)
 	}
@@ -413,10 +412,10 @@ func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 	}
 
 	b.metrics.Adds.Add(float64(len(bulk)))
-
-	err = decodeMsgPack(result.Data, snapshots)
+	snapshots := make([]*balloon.Snapshot, 0)
+	err = decodeMsgPack(result.Data, &snapshots)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Decoding the response of AddBulk from raft got: %v", err)
 	}
 
 	//Send snapshot to the snapshot channel
