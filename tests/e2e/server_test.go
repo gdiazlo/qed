@@ -115,7 +115,7 @@ func TestStartCluster(t *testing.T) {
 		retry(3, 2*time.Second, func() error {
 			var subErr error
 			retry(3, 2*time.Second, func() error {
-				resp, subErr = doReq("GET", "http://localhost:8800/info/shards", "APIKey", nil)
+				resp, subErr = doReq("GET", "http://localhost:8801/info/shards", "APIKey", nil)
 				return subErr
 			})
 			if subErr != nil {
@@ -138,6 +138,7 @@ func TestStartCluster(t *testing.T) {
 				mainErr = fmt.Errorf("error decoding info: %v", err)
 				return mainErr
 			}
+
 			shards := len(m["shards"].(map[string]interface{}))
 			if shards != 3 {
 				mainErr = fmt.Errorf("not enought shards: %v", shards)

@@ -51,6 +51,8 @@ var (
 	ErrNotLeader = errors.New("not leader")
 )
 
+type Metadata map[string]interface{}
+
 // RaftBalloon is the interface Raft-backed balloons must implement.
 type RaftBalloonApi interface {
 	Add(event []byte) (*balloon.Snapshot, error)
@@ -61,8 +63,8 @@ type RaftBalloonApi interface {
 	QueryMembership(event []byte) (*balloon.MembershipProof, error)
 	QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error)
 	// Join joins the node, identified by nodeID and reachable at addr, to the cluster
-	Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error
-	Info() map[string]interface{}
+	Join(nodeId, clusterId uint64, addr string) error
+	Info() (Metadata, error)
 }
 
 // RaftBalloon is a replicated verifiable key-value store, where changes are made via Raft consensus.
@@ -137,7 +139,7 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 
 // Open opens the Balloon. If no joinAddr is provided, then there are no existing peers,
 // then this node becomes the first node, and therefore, leader of the cluster.
-func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
+func (b *RaftBalloon) Open(bootstrap bool) error {
 	b.Lock()
 	defer b.Unlock()
 
@@ -189,33 +191,10 @@ func (b *RaftBalloon) Close(wait bool) error {
 	return nil
 }
 
-func waitForResp(s *dragonboat.RequestState, timeout time.Duration) (*statemachine.Result, error) {
-	for {
-		select {
-		case r := <-s.CompletedC:
-			if r.Completed() {
-				result := r.GetResult()
-				return &result, nil
-			}
-			if r.Timeout() {
-				return nil, fmt.Errorf("Request timed out while processing")
-			}
-			if r.Rejected() {
-				return nil, fmt.Errorf("Request rejected. Session is probably invalid.")
-			}
-			if r.Terminated() {
-				return nil, fmt.Errorf("Request terminated because cluster is shutting down.")
-			}
-		case <-time.After(timeout):
-			return nil, fmt.Errorf("timeout")
-		}
-	}
-}
-
 // Join joins a node, identified by id and located at addr, to this store.
 // The node must be ready to respond to Raft communications at that address.
 // This must be called from the Leader or it will fail.
-func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error {
+func (b *RaftBalloon) Join(nodeId, clusterId uint64, addr string) error {
 
 	log.Infof("received join request for remote node %s at %s", nodeId, addr)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -278,7 +257,7 @@ func (b *RaftBalloon) Addr() string {
 // LeaderAddr returns the Raft address of the current leader. Returns a
 // blank string if there is no leader.
 func (b *RaftBalloon) LeaderAddr() (string, error) {
-	id, err := b.LeaderID()
+	id, err := b.LeaderId()
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +276,7 @@ func (b *RaftBalloon) ID() uint64 {
 
 // LeaderID returns the node ID of the Raft leader. Returns a
 // blank string if there is no leader, or an error.
-func (b *RaftBalloon) LeaderID() (uint64, error) {
+func (b *RaftBalloon) LeaderId() (uint64, error) {
 	id, ok, err := b.nodeHost.GetLeaderID(b.clusterConfig.ClusterID)
 	if !ok || err != nil {
 		return 0, fmt.Errorf("Error geting leader information: %v", err)
@@ -344,13 +323,23 @@ func (b *RaftBalloon) remove(id uint64) error {
 	return err
 }
 
-// TODO Improve info structure.
-func (b *RaftBalloon) Info() map[string]interface{} {
-	m := make(map[string]interface{})
-	m["nodeID"] = b.ID()
-	m["leaderID"], _ = b.LeaderID()
-	m["meta"] = b.fsm.meta
-	return m
+func (b *RaftBalloon) Info() (Metadata, error) {
+
+	id, err := b.LeaderId()
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := b.Nodes()
+	if err != nil {
+		return nil, err
+	}
+	info := Metadata{
+		"leaderId": id,
+		"nodeId":   b.id,
+		"nodes":    nodes,
+	}
+
+	return info, nil
 }
 
 func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
@@ -450,4 +439,27 @@ func (b *RaftBalloon) QueryMembership(event []byte) (*balloon.MembershipProof, e
 func (b *RaftBalloon) QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error) {
 	b.metrics.IncrementalQueries.Inc()
 	return b.fsm.QueryConsistency(start, end)
+}
+
+func waitForResp(s *dragonboat.RequestState, timeout time.Duration) (*statemachine.Result, error) {
+	for {
+		select {
+		case r := <-s.CompletedC:
+			if r.Completed() {
+				result := r.GetResult()
+				return &result, nil
+			}
+			if r.Timeout() {
+				return nil, fmt.Errorf("Request timed out while processing")
+			}
+			if r.Rejected() {
+				return nil, fmt.Errorf("Request rejected. Session is probably invalid.")
+			}
+			if r.Terminated() {
+				return nil, fmt.Errorf("Request terminated because cluster is shutting down.")
+			}
+		case <-time.After(timeout):
+			return nil, fmt.Errorf("timeout")
+		}
+	}
 }

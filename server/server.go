@@ -24,7 +24,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -86,7 +85,7 @@ func serverInfo(conf *Config) http.HandlerFunc {
 func NewServer(conf *Config) (*Server, error) {
 
 	bootstrap := false
-	if len(conf.RaftJoinAddr) <= 1 {
+	if len(conf.RaftJoinAddr) == 0 {
 		bootstrap = true
 	}
 
@@ -178,24 +177,24 @@ func NewServer(conf *Config) (*Server, error) {
 	return server, nil
 }
 
-func join(joinAddr, raftAddr string, nodeId, clusterId uint64, meta map[string]string) error {
-	body := make(map[string]interface{})
-	body["addr"] = raftAddr
-	body["nodeId"] = nodeId
-	body["clusterId"] = clusterId
-	body["meta"] = meta
+func join(joinAddr, raftAddr string, nodeId, clusterId uint64) error {
+	req := make(map[string]interface{})
+	req["addr"] = raftAddr
+	req["nodeId"] = nodeId
+	req["clusterId"] = clusterId
 
-	b, err := json.Marshal(body)
+	b, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
 
 	resp, err := http.Post(fmt.Sprintf("http://%s/join", joinAddr), "application-type/json", bytes.NewReader(b))
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(ioutil.Discard, resp.Body)
 
 	return nil
 }
@@ -204,9 +203,6 @@ func join(joinAddr, raftAddr string, nodeId, clusterId uint64, meta map[string]s
 func (s *Server) Start() error {
 	s.metrics.Instances.Inc()
 	log.Infof("Starting QED server %d\n", s.conf.NodeId)
-
-	metadata := map[string]string{}
-	metadata["HTTPAddr"] = s.conf.HTTPAddr
 
 	log.Debugf("	* Starting metrics HTTP server in addr: %s", s.conf.MetricsAddr)
 	s.metricsServer.Start()
@@ -219,14 +215,14 @@ func (s *Server) Start() error {
 				s.conf.SSLCertificateKey,
 			)
 			if err != http.ErrServerClosed {
-				log.Errorf("Can't start QED API HTTP Server: %s", err)
+				log.Fatalf("Can't start QED API HTTP Server: %s", err)
 			}
 		}()
 	} else {
 		go func() {
 			log.Debugf("	* Starting QED API HTTP server in addr: %v", s.conf.HTTPAddr)
 			if err := s.httpServer.ListenAndServe(); err != http.ErrServerClosed {
-				log.Errorf("Can't start QED API HTTP Server: %s", err)
+				log.Fatalf("Can't start QED API HTTP Server: %v", err)
 			}
 		}()
 	}
@@ -234,7 +230,7 @@ func (s *Server) Start() error {
 	go func() {
 		log.Debugf("	* Starting QED MGMT HTTP server in addr: %v", s.conf.MgmtAddr)
 		if err := s.mgmtServer.ListenAndServe(); err != http.ErrServerClosed {
-			log.Errorf("Can't start QED MGMT HTTP Server: %s", err)
+			log.Fatalf("Can't start QED MGMT HTTP Server: %v", err)
 		}
 	}()
 
@@ -247,13 +243,13 @@ func (s *Server) Start() error {
 	if !s.bootstrap {
 		for _, addr := range s.conf.RaftJoinAddr {
 			log.Debugf("	* Joining existent cluster QED MGMT HTTP server in addr: %v", addr)
-			if err := join(addr, s.conf.RaftAddr, s.conf.NodeId, s.conf.ClusterId, metadata); err != nil {
-				log.Fatalf("failed to join node at %s: %s", addr, err.Error())
+			if err := join(addr, s.conf.RaftAddr, s.conf.NodeId, s.conf.ClusterId); err != nil {
+				return fmt.Errorf("Can't join QED cluster: %v", err)
 			}
 		}
 	}
 
-	err := s.raftBalloon.Open(s.bootstrap, metadata)
+	err := s.raftBalloon.Open(s.bootstrap)
 	if err != nil {
 		return err
 	}
