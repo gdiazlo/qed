@@ -86,7 +86,7 @@ func serverInfo(conf *Config) http.HandlerFunc {
 func NewServer(conf *Config) (*Server, error) {
 
 	bootstrap := false
-	if len(conf.RaftJoinAddr) <= 0 {
+	if len(conf.RaftJoinAddr) <= 1 {
 		bootstrap = true
 	}
 

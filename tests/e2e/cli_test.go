@@ -210,7 +210,7 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 			spec.True(t, strings.Contains(fmt.Sprintf("%s", stdoutStderr), "Verify: OK"), "Must verify with eventDigest")
 		})
 
-		let(t, "Shutdown server 0", func(t *testing.T) {
+		let(t, "Shutdown server 1", func(t *testing.T) {
 			err = a0()
 			spec.NoError(t, err, "error stoping server")
 
