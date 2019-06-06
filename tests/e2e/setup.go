@@ -109,7 +109,7 @@ func configQedServer(nodeId, clusterId uint64, pathDB, signPath, tlsPath string,
 	conf := server.DefaultConfig()
 	conf.APIKey = "APIKey"
 	conf.NodeId = nodeId
-	conf.ClusterId = nodeId
+	conf.ClusterId = clusterId
 	conf.HTTPAddr = fmt.Sprintf("127.0.0.1:880%d", nodeId)
 	conf.MgmtAddr = fmt.Sprintf("127.0.0.1:870%d", nodeId)
 	conf.MetricsAddr = fmt.Sprintf("127.0.0.1:860%d", nodeId)
