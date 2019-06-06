@@ -203,7 +203,7 @@ func join(joinAddr, raftAddr string, nodeId, clusterId uint64, meta map[string]s
 // Start will start the server in a non-blockable fashion.
 func (s *Server) Start() error {
 	s.metrics.Instances.Inc()
-	log.Infof("Starting QED server %s\n", s.conf.NodeId)
+	log.Infof("Starting QED server %d\n", s.conf.NodeId)
 
 	metadata := map[string]string{}
 	metadata["HTTPAddr"] = s.conf.HTTPAddr
@@ -266,7 +266,7 @@ func (s *Server) Start() error {
 // Stop will close all the channels from the mux servers.
 func (s *Server) Stop() error {
 	s.metrics.Instances.Dec()
-	log.Infof("\nShutting down QED server %s", s.conf.NodeId)
+	log.Infof("\nShutting down QED server %d", s.conf.NodeId)
 
 	log.Debugf("Metrics enabled: stopping server...")
 	s.metricsServer.Shutdown()

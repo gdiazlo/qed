@@ -52,7 +52,7 @@ func TestStart(t *testing.T) {
 			var resp *http.Response
 			var err error
 			retry(3, 2*time.Second, func() error {
-				resp, err = doReq("GET", "http://localhost:8800/info", "APIKey", nil)
+				resp, err = doReq("GET", "http://localhost:8801/info", "APIKey", nil)
 				return err
 			})
 			spec.NoError(t, err, "Subprocess must not exit with non-zero status")
@@ -63,7 +63,7 @@ func TestStart(t *testing.T) {
 			var resp *http.Response
 			var err error
 			retry(3, 1*time.Second, func() error {
-				resp, err = doReq("GET", "http://localhost:8800/xD", "APIKey", nil)
+				resp, err = doReq("GET", "http://localhost:8801/xD", "APIKey", nil)
 				return err
 			})
 			spec.NoError(t, err, "Error getting response from server")
@@ -77,7 +77,7 @@ func TestStart(t *testing.T) {
 			var resp *http.Response
 			var err error
 			retry(3, 1*time.Second, func() error {
-				resp, err = doReq("GET", "http://localhost:8600/metrics", "APIKey", nil)
+				resp, err = doReq("GET", "http://localhost:8601/metrics", "APIKey", nil)
 				return err
 			})
 			spec.NoError(t, err, "Subprocess must not exit with non-zero status")

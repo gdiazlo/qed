@@ -145,7 +145,7 @@ func (b *RaftBalloon) Open(bootstrap bool, metadata map[string]string) error {
 		return ErrBalloonInvalidState
 	}
 
-	log.Infof("opening balloon with node ID %s", b.id)
+	log.Infof("opening balloon with node ID %d", b.id)
 
 	peers := make(map[uint64]string)
 
