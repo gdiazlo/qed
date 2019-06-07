@@ -28,9 +28,9 @@ import (
 	"github.com/bbva/qed/storage/rocks"
 	metrics_utils "github.com/bbva/qed/testutils/metrics"
 	utilrand "github.com/bbva/qed/testutils/rand"
+	"github.com/bbva/qed/testutils/spec"
 	"github.com/lni/dragonboat"
 	"github.com/lni/dragonboat/logger"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -103,41 +103,41 @@ func Test_Raft_IsLeader(t *testing.T) {
 	log.SetLogger("Test_Raft_IsLeader", log.SILENT)
 
 	r, clean, err := newNode(false, 0, 100, 100)
-	require.NoError(t, err, "Error creating testing node")
+	spec.NoError(t, err, "Error creating testing node")
 	defer clean(true)
 
-	err = r.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err)
+	err = r.Open(true)
+	spec.NoError(t, err, "Error opening raft node")
 
 	defer func() {
 		err = r.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node")
 	}()
 
 	_, err = r.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader")
 
-	require.True(t, r.IsLeader(), "single node is not leader!")
+	spec.True(t, r.IsLeader(), "single node is not leader!")
 
 }
 
 func TestRaft_OpenStore_CloseSingleNode(t *testing.T) {
 
 	r, clean, err := newNode(false, 0, 200, 100)
-	require.NoError(t, err, "Error creating testing node")
+	spec.NoError(t, err, "Error creating testing node")
 	defer clean(true)
 
-	err = r.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err)
+	err = r.Open(true)
+	spec.NoError(t, err, "Error opening raft node")
 
 	_, err = r.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader")
 
 	err = r.Close(true)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error closing raft node")
 
-	err = r.Open(true, map[string]string{"foo": "bar"})
-	require.Equal(t, err, ErrBalloonInvalidState, err, "incorrect error returned on re-open attempt")
+	err = r.Open(true)
+	spec.Equal(t, err, ErrBalloonInvalidState, "incorrect error returned on re-open attempt")
 
 }
 
@@ -146,144 +146,144 @@ func Test_Raft_MultiNode_Join(t *testing.T) {
 	log.SetLogger("Test_Raft_MultiNodeJoin", log.SILENT)
 
 	r0, clean0, err := newNode(false, 0, 100, 200)
-	require.NoError(t, err, "Error creating raft node 0")
+	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error clogins raft node 0")
 		clean0(true)
 	}()
 
-	err = r0.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error opening raft node 0")
+	err = r0.Open(true)
+	spec.NoError(t, err, "Error opening raft node 0")
 
 	_, err = r0.WaitForLeader(10 * time.Second)
-	require.NoError(t, err, "Error waiting for leader")
+	spec.NoError(t, err, "Error waiting for leader")
 
 	r1, clean1, err := newNode(false, 1, 200, 200)
-	require.NoError(t, err, "Error creating raft node 1")
+	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 1")
 		clean1(true)
 	}()
 
-	err = r0.Join(200, 200, r1.Addr(), map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error joining raft node 0")
+	err = r0.Join(200, 200, r1.Addr())
+	spec.NoError(t, err, "Error joining raft node 0")
 
-	err = r1.Open(false, map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error opening raft node 1")
+	err = r1.Open(false)
+	spec.NoError(t, err, "Error opening raft node 1")
 
 	// This Nodes() seems to work only agains the leader
 	// TODO: test this further
 	n0, err := r0.Nodes()
-	require.NoError(t, err, "Error getting node list from raft node 0")
-	require.Equal(t, len(n0), 2, "Number of nodes must be 2")
+	spec.NoError(t, err, "Error getting node list from raft node 0")
+	spec.Equal(t, len(n0), 2, "Number of nodes must be 2")
 }
 
 func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 
 	r0, clean0, err := newNode(false, 0, 100, 300)
-	require.NoError(t, err, "Error creating raft node 0")
+	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 0")
 		clean0(true)
 	}()
 
-	err = r0.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err)
+	err = r0.Open(true)
+	spec.NoError(t, err, "Error opening raft node 0")
 
 	_, err = r0.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader")
 
 	r1, clean1, err := newNode(false, 1, 200, 300)
-	require.NoError(t, err, "Error creating raft node 1")
+	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 1")
 		clean1(true)
 	}()
 
-	err = r0.Join(200, 300, r1.Addr(), map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error joining raft node 0")
+	err = r0.Join(200, 300, r1.Addr())
+	spec.NoError(t, err, "Error joining raft node 0")
 
-	err = r1.Open(false, map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error opening raft node 1")
+	err = r1.Open(false)
+	spec.NoError(t, err, "Error opening raft node 1")
 
 	_, err = r0.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader in raft node 0")
 
 	// Check leader state on follower.
 	leaderAddr, err := r1.LeaderAddr()
-	require.NoError(t, err, "Error getting leader address")
-	require.Equal(t, leaderAddr, r0.Addr(), "wrong leader address returned")
+	spec.NoError(t, err, "Error getting leader address from raft node 1")
+	spec.Equal(t, leaderAddr, r0.Addr(), "wrong leader address returned")
 
-	id, err := r1.LeaderID()
-	require.NoError(t, err)
+	id, err := r1.LeaderId()
+	spec.NoError(t, err, "Error getting leader id from raft node 1")
 
-	require.Equal(t, id, r0.ID(), "wrong leader ID returned")
+	spec.Equal(t, id, r0.ID(), "wrong leader ID returned")
 
 	n0, err := r0.Nodes()
-	require.NoError(t, err, "Error getting node list from raft node 0")
-	require.Equal(t, len(n0), 2, "Number of nodes must be 2")
+	spec.NoError(t, err, "Error getting node list from raft node 0")
+	spec.Equal(t, len(n0), 2, "Number of nodes must be 2")
 
 	// Remove a node.
 	err = r0.Remove(r1.ID())
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error removing raft node 1 from raft node 0")
 
 	nodes, err := r0.Nodes()
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error getting nodes from raft node 0")
 
-	require.Equal(t, len(nodes), 1, "size of cluster is not correct post remove")
-	require.Equal(t, r0.Addr(), nodes[r0.ID()], "cluster does not have correct nodes post remove")
+	spec.Equal(t, len(nodes), 1, "size of cluster is not correct post remove")
+	spec.Equal(t, r0.Addr(), nodes[r0.ID()], "cluster does not have correct nodes post remove")
 
 }
 
 func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
 	r0, clean0, err := newNode(false, 0, 100, 400)
-	require.NoError(t, err, "Error creating raft node 0")
+	spec.NoError(t, err, "Error creating raft node 0")
 
-	err = r0.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err)
+	err = r0.Open(true)
+	spec.NoError(t, err, "Error opening raft node 0")
 
 	_, err = r0.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader in raft node 0")
 
 	// Add event
 	rand.Seed(42)
 	expectedBalloonVersion := uint64(rand.Intn(50))
 	for i := uint64(0); i < expectedBalloonVersion; i++ {
 		_, err = r0.Add([]byte(fmt.Sprintf("Test Event %d", i)))
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error adding event to raft node 0")
 	}
 
 	// request snapshot
 	resp, err := r0.nodeHost.RequestSnapshot(400, dragonboat.SnapshotOption{}, 5*time.Second)
-	require.NoError(t, err, "Error requesting snapshot")
+	spec.NoError(t, err, "Error requesting snapshot from raft node 0")
 	_, err = waitForResp(resp, 5*time.Second)
-	require.NoError(t, err, "Error in snapshot request")
+	spec.NoError(t, err, "Error in snapshot request")
 
 	// close node
 	err = r0.Close(true)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error closing raft node 0")
 	clean0(false)
 
 	// restart node and check if recovers from snapshot
 	r1, clean1, err := newNode(false, 0, 100, 400)
-	require.NoError(t, err, "Error creating raft node 1")
+	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err = r1.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 1")
 		clean1(true)
 	}()
 
-	err = r1.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err)
+	err = r1.Open(true)
+	spec.NoError(t, err, "Error opening raft node 1")
 
 	_, err = r1.WaitForLeader(10 * time.Second)
-	require.NoError(t, err)
+	spec.NoError(t, err, "Error waiting for leader in raft node 1")
 
-	require.Equal(t, expectedBalloonVersion, r1.fsm.balloon.Version(), "Error in state recovery from snapshot")
+	spec.Equal(t, expectedBalloonVersion, r1.fsm.balloon.Version(), "Error in state recovery from snapshot")
 
 }
 
@@ -292,49 +292,57 @@ func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
 	log.SetLogger("Test_Raft_MultiNode_WithMetadata", log.SILENT)
 
 	r0, clean0, err := newNode(false, 2, 100, 200)
-	require.NoError(t, err, "Error creating raft node 0")
+	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 0")
 		clean0(true)
 	}()
 
-	err = r0.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error opening raft node 0")
+	err = r0.Open(true)
+	spec.NoError(t, err, "Error opening raft node 0")
 
 	_, err = r0.WaitForLeader(10 * time.Second)
-	require.NoError(t, err, "Error waiting for leader")
+	spec.NoError(t, err, "Error waiting for leader")
 
 	r1, clean1, err := newNode(false, 3, 200, 200)
-	require.NoError(t, err, "Error creating raft node 1")
+	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
-		require.NoError(t, err)
+		spec.NoError(t, err, "Error closing raft node 1")
 		clean1(true)
 	}()
 
-	err = r0.Join(200, 200, r1.Addr(), map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error joining raft node 0")
+	err = r0.Join(200, 200, r1.Addr())
+	spec.NoError(t, err, "Error joining raft node 0")
 
-	err = r1.Open(false, map[string]string{"foo": "bar"})
-	require.NoError(t, err, "Error opening raft node 1")
+	err = r1.Open(false)
+	spec.NoError(t, err, "Error opening raft node 1")
 
-	require.Equal(t, r0.Info()["meta"], r1.Info()["meta"], "Both nodes must have the same metadata.")
+	_, err = r1.WaitForLeader(10 * time.Second)
+	spec.NoError(t, err, "Error waiting for leader")
+
+	info0, err := r0.Info()
+	spec.NoError(t, err, "Error getting info from node 0")
+	info1, err := r1.Info()
+	spec.NoError(t, err, "Error getting info from node 0")
+
+	spec.Equal(t, info0["meta"], info1["meta"], "Both nodes must have the same metadata.")
 }
 
 func BenchmarkRaftAdd(b *testing.B) {
 
 	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
 
-	raftNodeA, _, err := newNode(false, 0, 1, 1)
-	require.NoError(b, err, "Error creating testing node")
-	// defer clean()
+	raftNodeA, clean, err := newNode(false, 0, 1, 1)
+	spec.NoError(b, err, "Error creating testing node")
+	defer clean(true)
 
-	err = raftNodeA.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(b, err)
+	err = raftNodeA.Open(true)
+	spec.NoError(b, err, "Error opening raft node A")
 
 	id, err := raftNodeA.WaitForLeader(10 * time.Second)
-	require.NoError(b, err, "Error waiting for leader")
+	spec.NoError(b, err, "Error waiting for leader")
 	fmt.Println("Leader ID A: ", id)
 
 	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
@@ -345,7 +353,7 @@ func BenchmarkRaftAdd(b *testing.B) {
 		for pb.Next() {
 			event := utilrand.Bytes(128)
 			_, err := raftNodeA.Add(event)
-			require.NoError(b, err)
+			spec.NoError(b, err, "Error adding event to raft node A")
 		}
 	})
 }
@@ -357,14 +365,14 @@ func BenchmarkRaftAddBulk(b *testing.B) {
 	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
 
 	raftNode, _, err := newNode(false, 0, 1, 1)
-	require.NoError(b, err, "Error creating testing node")
+	spec.NoError(b, err, "Error creating testing node")
 	// defer clean()
 
-	err = raftNode.Open(true, map[string]string{"foo": "bar"})
-	require.NoError(b, err)
+	err = raftNode.Open(true)
+	spec.NoError(b, err, "Error opening raft node")
 
 	id, err := raftNode.WaitForLeader(10 * time.Second)
-	require.NoError(b, err, "Error waiting for leader")
+	spec.NoError(b, err, "Error waiting for leader")
 	fmt.Println("Leader ID A: ", id)
 
 	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
@@ -375,7 +383,7 @@ func BenchmarkRaftAddBulk(b *testing.B) {
 		for pb.Next() {
 			events := [][]byte{utilrand.Bytes(128)}
 			_, err := raftNode.AddBulk(events)
-			require.NoError(b, err)
+			spec.NoError(b, err, "Error adding bulk events to raft node")
 		}
 	})
 
