@@ -71,7 +71,7 @@ func (b fakeRaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 	}, nil
 }
 
-func (b fakeRaftBalloon) Join(nodeId, clusterId uint64, addr string, metadata map[string]string) error {
+func (b fakeRaftBalloon) Join(nodeId, clusterId uint64, addr string) error {
 	return nil
 }
 
@@ -139,8 +139,8 @@ func (b fakeRaftBalloon) QueryConsistency(start, end uint64) (*balloon.Increment
 	return &ip, nil
 }
 
-func (b fakeRaftBalloon) Info() map[string]interface{} {
-	return make(map[string]interface{})
+func (b fakeRaftBalloon) Info() (consensus.Metadata, error) {
+	return make(consensus.Metadata), nil
 }
 
 func TestHealthCheckHandler(t *testing.T) {
@@ -618,7 +618,7 @@ func BenchmarkApiAdd(b *testing.B) {
 	require.NoError(b, err, "Error creating testing node")
 	// defer clean()
 
-	err = raftNode.Open(true, map[string]string{"foo": "bar"})
+	err = raftNode.Open(true)
 	require.NoError(b, err)
 
 	_, err = raftNode.WaitForLeader(10 * time.Second)
