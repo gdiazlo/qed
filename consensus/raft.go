@@ -333,6 +333,13 @@ func (b *RaftBalloon) Info() (Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	for k, v := range nodes {
+		nv := []byte(v)
+		nv[11] = 0x38
+		nodes[k] = string(nv)
+	}
+
 	info := Metadata{
 		"leaderId": id,
 		"nodeId":   b.id,
