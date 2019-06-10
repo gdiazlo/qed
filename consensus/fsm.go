@@ -26,7 +26,7 @@ import (
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
 
-	sm "github.com/lni/dragonboat/statemachine"
+	"github.com/lni/dragonboat/statemachine"
 	"github.com/prometheus/common/log"
 )
 
@@ -139,7 +139,7 @@ func (fsm *BalloonFSM) Open(stopc <-chan struct{}) (uint64, error) {
 // Update returns an error when there is unrecoverable error for updating the
 // on disk state machine, e.g. disk failure when trying to update the state
 // machine.
-func (fsm *BalloonFSM) Update(entries []sm.Entry) ([]sm.Entry, error) {
+func (fsm *BalloonFSM) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 
 	for i, e := range entries {
 		fsmResponse := fsm.apply(e)
@@ -147,14 +147,14 @@ func (fsm *BalloonFSM) Update(entries []sm.Entry) ([]sm.Entry, error) {
 		if err != nil {
 			panic("fsm.Update():Error encoding fsmResponse snapshots")
 		}
-		entries[i].Result = sm.Result{Data: data.Bytes(), Value: fsmResponse.version}
+		entries[i].Result = statemachine.Result{Data: data.Bytes(), Value: fsmResponse.version}
 	}
 
 	return entries, nil
 }
 
 // Apply applies a Raft log entry to the database.
-func (fsm *BalloonFSM) apply(e sm.Entry) *fsmResponse {
+func (fsm *BalloonFSM) apply(e statemachine.Entry) *fsmResponse {
 
 	cmdType := commands.CommandType(e.Cmd[0])
 
@@ -334,7 +334,7 @@ func (fsm *BalloonFSM) SaveSnapshot(state interface{}, w io.Writer, abort <-chan
 		select {
 		case <-abort:
 			log.Infof("fsm.SaveSnapshot() aborted by raft signal")
-			return sm.ErrSnapshotStopped
+			return statemachine.ErrSnapshotStopped
 		case <-done:
 			log.Debugf("fsm.SaveSnapshot() ended successfully")
 			return err
@@ -380,7 +380,7 @@ func (fsm *BalloonFSM) RecoverFromSnapshot(r io.Reader, abort <-chan struct{}) e
 		select {
 		case <-abort:
 			log.Infof("fsm.RecoverFromSnapshot() abort signaled by raft")
-			return sm.ErrSnapshotStopped
+			return statemachine.ErrSnapshotStopped
 		case <-done:
 			return err
 		}
