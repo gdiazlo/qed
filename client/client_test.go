@@ -229,16 +229,16 @@ func TestCallPrimaryUnreachableWithDiscovery(t *testing.T) {
 			if !alreadyRetried {
 				if req.URL.Path == "/info/shards" {
 					info := protocol.Shards{
-						NodeId:    "primary1",
-						LeaderId:  "primary1",
+						NodeId:    101,
+						LeaderId:  101,
 						URIScheme: "http",
-						Shards: map[string]protocol.ShardDetail{
-							"primary1": protocol.ShardDetail{
-								NodeId:   "primary1",
+						Shards: map[uint64]protocol.ShardDetail{
+							101: protocol.ShardDetail{
+								NodeId:   101,
 								HTTPAddr: "primary1.foo",
 							},
-							"secondary1": protocol.ShardDetail{
-								NodeId:   "secondary1",
+							201: protocol.ShardDetail{
+								NodeId:   201,
 								HTTPAddr: "secondary1.foo",
 							},
 						},
@@ -254,12 +254,12 @@ func TestCallPrimaryUnreachableWithDiscovery(t *testing.T) {
 			numRequests++
 			if req.URL.Path == "/info/shards" {
 				info := protocol.Shards{
-					NodeId:    "secondary1",
-					LeaderId:  "secondary1",
+					NodeId:    201,
+					LeaderId:  201,
 					URIScheme: "http",
-					Shards: map[string]protocol.ShardDetail{
-						"secondary1": protocol.ShardDetail{
-							NodeId:   "secondary1",
+					Shards: map[uint64]protocol.ShardDetail{
+						201: protocol.ShardDetail{
+							NodeId:   201,
 							HTTPAddr: "secondary1.foo",
 						},
 					},
@@ -317,16 +317,16 @@ func TestCallPrimaryUnreachableWithDiscoveryAndHealtChecks(t *testing.T) {
 				}
 				if req.URL.Path == "/info/shards" {
 					info := protocol.Shards{
-						NodeId:    "primary1",
-						LeaderId:  "primary1",
+						NodeId:    101,
+						LeaderId:  101,
 						URIScheme: "http",
-						Shards: map[string]protocol.ShardDetail{
-							"primary1": protocol.ShardDetail{
-								NodeId:   "primary1",
+						Shards: map[uint64]protocol.ShardDetail{
+							101: protocol.ShardDetail{
+								NodeId:   101,
 								HTTPAddr: "primary1.foo",
 							},
-							"secondary1": protocol.ShardDetail{
-								NodeId:   "secondary1",
+							201: protocol.ShardDetail{
+								NodeId:   201,
 								HTTPAddr: "secondary1.foo",
 							},
 						},
@@ -344,12 +344,12 @@ func TestCallPrimaryUnreachableWithDiscoveryAndHealtChecks(t *testing.T) {
 			}
 			if req.URL.Path == "/info/shards" {
 				info := protocol.Shards{
-					NodeId:    "secondary1",
-					LeaderId:  "secondary1",
+					NodeId:    201,
+					LeaderId:  201,
 					URIScheme: "http",
-					Shards: map[string]protocol.ShardDetail{
-						"secondary1": protocol.ShardDetail{
-							NodeId:   "secondary1",
+					Shards: map[uint64]protocol.ShardDetail{
+						201: protocol.ShardDetail{
+							NodeId:   201,
 							HTTPAddr: "secondary1.foo",
 						},
 					},
