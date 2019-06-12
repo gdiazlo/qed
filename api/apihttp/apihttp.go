@@ -412,7 +412,7 @@ func LogHandler(handle http.Handler) http.HandlerFunc {
 	}
 }
 
-func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
+func InfoShardsHandler(api consensus.RaftBalloonApi) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.Header().Set("Allow", "GET")
@@ -427,7 +427,7 @@ func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 			scheme = "http"
 		}
 
-		info, err := balloon.Info()
+		info, err := api.Info()
 		if err != nil {
 			err = fmt.Errorf("Error getting information: %v", err)
 			http.Error(w, err.Error(), http.StatusPreconditionFailed)
@@ -435,16 +435,16 @@ func InfoShardsHandler(balloon consensus.RaftBalloonApi) http.HandlerFunc {
 		}
 
 		details := make(map[uint64]protocol.ShardDetail)
-		for k, v := range info["nodes"].(map[uint64]string) {
+		for k, v := range info.Nodes {
 			details[k] = protocol.ShardDetail{
 				NodeId:   k,
-				HTTPAddr: v,
+				HTTPAddr: v.HTTPAddr,
 			}
 		}
 
 		shards := &protocol.Shards{
-			NodeId:    info["nodeId"].(uint64),
-			LeaderId:  info["leaderId"].(uint64),
+			NodeId:    info.NodeId,
+			LeaderId:  info.LeaderId,
 			URIScheme: protocol.Scheme(scheme),
 			Shards:    details,
 		}

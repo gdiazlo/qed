@@ -27,6 +27,16 @@ import (
 	"github.com/bbva/qed/util"
 )
 
+type Metadata struct {
+	NodeId   uint64
+	LeaderId uint64
+	Cluster  map[uint64]struct {
+		ManagementAddress string
+		APIAddress        string
+		RaftAddress       string
+	}
+}
+
 // Event is the public struct that Add handler function uses to
 // parse the post params.
 type Event struct {

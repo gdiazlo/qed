@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/bbva/qed/balloon"
-	"github.com/bbva/qed/consensus/commands"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/log"
 	"github.com/bbva/qed/metrics"
@@ -51,7 +50,18 @@ var (
 	ErrNotLeader = errors.New("not leader")
 )
 
-type Metadata map[string]interface{}
+type NodeInfo struct {
+	HTTPAddr    string
+	RaftAddr    string
+	MgmtAddr    string
+	MetricsAddr string
+}
+
+type Metadata struct {
+	NodeId   uint64
+	LeaderId uint64
+	Nodes    map[uint64]*NodeInfo
+}
 
 // RaftBalloon is the interface Raft-backed balloons must implement.
 type RaftBalloonApi interface {
@@ -62,17 +72,14 @@ type RaftBalloonApi interface {
 	QueryDigestMembership(keyDigest hashing.Digest) (*balloon.MembershipProof, error)
 	QueryMembership(event []byte) (*balloon.MembershipProof, error)
 	QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error)
-	// Join joins the node, identified by nodeID and reachable at addr, to the cluster
 	Join(nodeId, clusterId uint64, addr string) error
-	Info() (Metadata, error)
+	Info() (*Metadata, error)
+	Metadata() error
 }
 
 // RaftBalloon is a replicated verifiable key-value store, where changes are made via Raft consensus.
 type RaftBalloon struct {
-	path string // Base path for the node
-	addr string // Node addr
-	id   uint64 // Node ID
-
+	conf           *Config
 	clusterConfig  config.Config
 	nodeHostConfig config.NodeHostConfig
 	nodeHost       *dragonboat.NodeHost
@@ -90,11 +97,11 @@ type RaftBalloon struct {
 }
 
 // NewRaftBalloon returns a new RaftBalloon.
-func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.ManagedStore, snapshotsCh chan *protocol.Snapshot) (*RaftBalloon, error) {
+func NewRaftBalloon(conf *Config, store storage.ManagedStore, snapshotsCh chan *protocol.Snapshot) (*RaftBalloon, error) {
 
 	clusterConfig := config.Config{
-		NodeID:             nodeId,
-		ClusterID:          clusterId,
+		NodeID:             conf.NodeId,
+		ClusterID:          conf.ClusterId,
 		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
@@ -103,10 +110,10 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 	}
 
 	nodeHostConfig := config.NodeHostConfig{
-		WALDir:         path + "/wal",
-		NodeHostDir:    path + "/nh",
+		WALDir:         conf.RaftPath + "/wal",
+		NodeHostDir:    conf.RaftPath + "/nh",
 		RTTMillisecond: 200,
-		RaftAddress:    addr,
+		RaftAddress:    conf.RaftAddr,
 	}
 
 	// Instantiate balloon FSM
@@ -121,12 +128,10 @@ func NewRaftBalloon(path, addr string, clusterId, nodeId uint64, store storage.M
 	}
 
 	rb := &RaftBalloon{
-		path:           path,
-		addr:           addr,
+		conf:           conf,
 		clusterConfig:  clusterConfig,
 		nodeHostConfig: nodeHostConfig,
 		nodeHost:       nodeHost,
-		id:             nodeId,
 		done:           make(chan struct{}),
 		fsm:            fsm,
 		snapshotsCh:    snapshotsCh,
@@ -147,12 +152,12 @@ func (b *RaftBalloon) Open(bootstrap bool) error {
 		return ErrBalloonInvalidState
 	}
 
-	log.Infof("opening balloon with node ID %v", b.id)
+	log.Infof("opening balloon with node ID %v", b.conf.NodeId)
 
 	peers := make(map[uint64]string)
 
 	if bootstrap {
-		peers[b.id] = b.addr
+		peers[b.conf.NodeId] = b.conf.RaftAddr
 	}
 
 	fsmFactory := func(x, y uint64) statemachine.IOnDiskStateMachine { return b.fsm }
@@ -271,7 +276,7 @@ func (b *RaftBalloon) LeaderAddr() (string, error) {
 
 // ID returns the Raft ID of the store.
 func (b *RaftBalloon) ID() uint64 {
-	return b.id
+	return b.conf.NodeId
 }
 
 // LeaderID returns the node ID of the Raft leader. Returns a
@@ -323,30 +328,24 @@ func (b *RaftBalloon) remove(id uint64) error {
 	return err
 }
 
-func (b *RaftBalloon) Info() (Metadata, error) {
+func (b *RaftBalloon) Info() (*Metadata, error) {
 
-	id, err := b.LeaderId()
+	// Update Leader info
+	leaderId, err := b.LeaderId()
 	if err != nil {
 		return nil, err
 	}
+
+	// Update nodes info
 	nodes, err := b.Nodes()
 	if err != nil {
 		return nil, err
 	}
 
-	for k, v := range nodes {
-		nv := []byte(v)
-		nv[11] = 0x38
-		nodes[k] = string(nv)
-	}
+	b.fsm.metaUpdate(leaderId, nodes)
 
-	info := Metadata{
-		"leaderId": id,
-		"nodeId":   b.id,
-		"nodes":    nodes,
-	}
-
-	return info, nil
+	// Return current metadata
+	return b.fsm.Info(), nil
 }
 
 func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
@@ -356,7 +355,8 @@ func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
 func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 	var snapshot []*balloon.Snapshot
 
-	cmd, err := commands.Encode(commands.AddEventCommandType, &commands.AddEventCommand{Event: event})
+	cmd := NewCommand(AddEventCommandType)
+	err := cmd.Encode(event)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode command: %v", err)
 	}
@@ -368,15 +368,15 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 
 	// defer b.nodeHost.CloseSession(ctx, session)
 
-	result, err := b.nodeHost.SyncPropose(ctx, session, cmd)
+	result, err := b.nodeHost.SyncPropose(ctx, session, cmd.data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error proposing Add command: %v", err)
 	}
 
 	b.metrics.Adds.Inc()
 	err = decodeMsgPack(result.Data, &snapshot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error decoding result from Add command: %v", err)
 	}
 
 	p := protocol.Snapshot(*snapshot[0])
@@ -389,7 +389,8 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 
 func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 
-	cmd, err := commands.Encode(commands.AddEventsBulkCommandType, &commands.AddEventsBulkCommand{Events: bulk})
+	cmd := NewCommand(AddEventsBulkCommandType)
+	err := cmd.Encode(bulk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode command: %v", err)
 	}
@@ -401,7 +402,7 @@ func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 
 	// defer b.nodeHost.CloseSession(ctx, session)
 
-	result, err := b.nodeHost.SyncPropose(ctx, session, cmd)
+	result, err := b.nodeHost.SyncPropose(ctx, session, cmd.data)
 	if err != nil {
 		return nil, err
 	}
@@ -421,6 +422,47 @@ func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 	}
 
 	return snapshots, nil
+}
+
+func (b *RaftBalloon) Metadata() error {
+
+	// Update Leader info
+	leaderId, err := b.LeaderId()
+	if err != nil {
+		return err
+	}
+
+	meta := new(Metadata)
+
+	meta.NodeId = b.conf.NodeId
+	meta.LeaderId = leaderId
+	meta.Nodes = make(map[uint64]*NodeInfo)
+	meta.Nodes[meta.NodeId] = &NodeInfo{
+		HTTPAddr:    b.conf.HTTPAddr,
+		RaftAddr:    b.conf.RaftAddr,
+		MgmtAddr:    b.conf.MgmtAddr,
+		MetricsAddr: b.conf.MetricsAddr,
+	}
+
+	cmd := NewCommand(MetadataUpdateCommandType)
+	err = cmd.Encode(meta)
+	if err != nil {
+		return fmt.Errorf("failed to encode command: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	session := b.nodeHost.GetNoOPSession(b.clusterConfig.ClusterID)
+
+	// defer b.nodeHost.CloseSession(ctx, session)
+
+	_, err = b.nodeHost.SyncPropose(ctx, session, cmd.data)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (b *RaftBalloon) QueryDigestMembershipConsistency(keyDigest hashing.Digest, version uint64) (*balloon.MembershipProof, error) {

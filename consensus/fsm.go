@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/bbva/qed/balloon"
-	"github.com/bbva/qed/consensus/commands"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
 
@@ -33,7 +32,7 @@ import (
 type fsmResponse struct {
 	snapshots []*balloon.Snapshot
 	version   uint64
-	error     error
+	err       error
 }
 
 type fsmState struct {
@@ -61,12 +60,14 @@ type BalloonFSM struct {
 	state   *fsmState
 
 	metaMu sync.RWMutex
-	meta   map[uint64]map[string]string
+	meta   *Metadata
 
 	restoreMu sync.RWMutex // Restore needs exclusive access to database.
 }
 
 func NewBalloonFSM(store storage.ManagedStore, hasherF func() hashing.Hasher) (*BalloonFSM, error) {
+	meta := new(Metadata)
+	meta.Nodes = make(map[uint64]*NodeInfo)
 
 	b, err := balloon.NewBalloon(store, hasherF)
 	if err != nil {
@@ -77,7 +78,7 @@ func NewBalloonFSM(store storage.ManagedStore, hasherF func() hashing.Hasher) (*
 		hasherF: hasherF,
 		store:   store,
 		balloon: b,
-		meta:    make(map[uint64]map[string]string),
+		meta:    meta,
 	}, nil
 }
 
@@ -143,76 +144,85 @@ func (fsm *BalloonFSM) Update(entries []statemachine.Entry) ([]statemachine.Entr
 
 	for i, e := range entries {
 		fsmResponse := fsm.apply(e)
+		if fsmResponse.err != nil {
+			return nil, fmt.Errorf("fsm.Update(): Error in response %v", fsmResponse.err)
+		}
 		data, err := encodeMsgPack(fsmResponse.snapshots)
 		if err != nil {
-			panic("fsm.Update():Error encoding fsmResponse snapshots")
+			return nil, fmt.Errorf("fsm.Update():Error encoding fsmResponse snapshots: %v", err)
 		}
+
 		entries[i].Result = statemachine.Result{Data: data.Bytes(), Value: fsmResponse.version}
 	}
 
 	return entries, nil
 }
 
+func (fsm *BalloonFSM) metaUpdate(leaderId uint64, nodes map[uint64]string) {
+	fsm.metaMu.Lock()
+	defer fsm.metaMu.Unlock()
+	fsm.meta.LeaderId = leaderId
+	for k, _ := range fsm.meta.Nodes {
+		if nodes[k] == "" {
+			delete(fsm.meta.Nodes, k)
+		}
+	}
+}
+
+func (fsm *BalloonFSM) metaMerge(m *Metadata) {
+	fsm.metaMu.Lock()
+	defer fsm.metaMu.Unlock()
+	for k, v := range m.Nodes {
+		fsm.meta.Nodes[k] = v
+	}
+}
+
+func (fsm *BalloonFSM) Info() *Metadata {
+	return fsm.meta
+}
+
 // Apply applies a Raft log entry to the database.
 func (fsm *BalloonFSM) apply(e statemachine.Entry) *fsmResponse {
 
-	cmdType := commands.CommandType(e.Cmd[0])
+	cmd := NewCommandFromRaft(e.Cmd)
 
-	switch cmdType {
-	case commands.AddEventCommandType:
-		var cmd commands.AddEventCommand
-		if err := commands.Decode(e.Cmd[1:], &cmd); err != nil {
-			return &fsmResponse{error: err}
+	switch cmd.id {
+	case AddEventCommandType:
+		var eventDigest []byte
+		if err := cmd.Decode(&eventDigest); err != nil {
+			return &fsmResponse{err: err}
 		}
+
 		newState := &fsmState{Index: e.Index, BalloonVersion: fsm.balloon.Version()}
 		if fsm.state.shouldApply(newState) {
-			return fsm.applyAdd(cmd.Event, newState)
+			return fsm.applyAdd(eventDigest, newState)
 		}
-		return &fsmResponse{error: fmt.Errorf("state already applied!: %+v -> %+v", fsm.state, newState)}
+		return &fsmResponse{err: fmt.Errorf("state already applied!: %+v -> %+v", fsm.state, newState)}
 
-	case commands.AddEventsBulkCommandType:
-		var cmd commands.AddEventsBulkCommand
-		if err := commands.Decode(e.Cmd[1:], &cmd); err != nil {
-			return &fsmResponse{error: err}
+	case AddEventsBulkCommandType:
+		var eventDigests [][]byte
+		if err := cmd.Decode(&eventDigests); err != nil {
+			return &fsmResponse{err: err}
 		}
 		// INFO: after applying a bulk there will be a jump in term version due to balloon version mapping.
-		newState := &fsmState{e.Index, fsm.balloon.Version() + uint64(len(cmd.Events)-1)}
+		newState := &fsmState{e.Index, fsm.balloon.Version() + uint64(len(eventDigests)-1)}
 		if fsm.state.shouldApply(newState) {
-			return fsm.applyAddBulk(cmd.Events, newState)
+			return fsm.applyAddBulk(eventDigests, newState)
 		}
-		return &fsmResponse{error: fmt.Errorf("state already applied!: %+v -> %+v", fsm.state, newState)}
+		return &fsmResponse{err: fmt.Errorf("state already applied!: %+v -> %+v", fsm.state, newState)}
 
-	case commands.MetadataSetCommandType:
-		var cmd commands.MetadataSetCommand
-		if err := commands.Decode(e.Cmd[1:], &cmd); err != nil {
-			return &fsmResponse{error: err}
-		}
-
-		fsm.metaMu.Lock()
-		defer fsm.metaMu.Unlock()
-		if _, ok := fsm.meta[cmd.Id]; !ok {
-			fsm.meta[cmd.Id] = make(map[string]string)
-		}
-		for k, v := range cmd.Data {
-			fsm.meta[cmd.Id][k] = v
+	case MetadataUpdateCommandType:
+		var meta *Metadata
+		if err := cmd.Decode(&meta); err != nil {
+			return &fsmResponse{err: err}
 		}
 
-		return &fsmResponse{}
-
-	case commands.MetadataDeleteCommandType:
-		var cmd commands.MetadataDeleteCommand
-		if err := commands.Decode(e.Cmd[1:], &cmd); err != nil {
-			return &fsmResponse{error: err}
-		}
-
-		fsm.metaMu.Lock()
-		defer fsm.metaMu.Unlock()
-		delete(fsm.meta, cmd.Id)
+		fsm.metaMerge(meta)
 
 		return &fsmResponse{}
 
 	default:
-		return &fsmResponse{error: fmt.Errorf("unknown command: %v", cmdType)}
+		return &fsmResponse{err: fmt.Errorf("unknown command: %v", cmd.id)}
 
 	}
 }
@@ -411,18 +421,18 @@ func (fsm *BalloonFSM) applyAdd(event []byte, state *fsmState) *fsmResponse {
 
 	snapshot, mutations, err := fsm.balloon.Add(event)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 
 	stateBuff, err := encodeMsgPack(state)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
 	err = fsm.store.Mutate(mutations)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 	fsm.state = state
 
@@ -433,63 +443,22 @@ func (fsm *BalloonFSM) applyAddBulk(events [][]byte, state *fsmState) *fsmRespon
 
 	snapshots, mutations, err := fsm.balloon.AddBulk(events)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 
 	stateBuff, err := encodeMsgPack(state)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
 	err = fsm.store.Mutate(mutations)
 	if err != nil {
-		return &fsmResponse{error: err}
+		return &fsmResponse{err: err}
 	}
 	fsm.state = state
 
 	return &fsmResponse{snapshots: snapshots}
-}
-
-// Metadata returns the value for a given key, for a given node ID.
-func (fsm *BalloonFSM) Metadata(id uint64, key string) string {
-	fsm.metaMu.RLock()
-	defer fsm.metaMu.RUnlock()
-
-	if _, ok := fsm.meta[id]; !ok {
-		return ""
-	}
-	v, ok := fsm.meta[id][key]
-	if ok {
-		return v
-	}
-	return ""
-}
-
-// setMetadata adds the metadata md to any existing metadata for
-// the given node ID.
-func (fsm *BalloonFSM) setMetadata(id uint64, md map[string]string) *commands.MetadataSetCommand {
-	// Check local data first.
-	if func() bool {
-		fsm.metaMu.RLock()
-		defer fsm.metaMu.RUnlock()
-		if _, ok := fsm.meta[id]; ok {
-			for k, v := range md {
-				if fsm.meta[id][k] != v {
-					return false
-				}
-			}
-			return true
-		}
-		return false
-	}() {
-		// Local data is same as data being pushed in,
-		// nothing to do.
-		return nil
-	}
-	cmd := &commands.MetadataSetCommand{Id: id, Data: md}
-
-	return cmd
 }
 
 // load latest fsmState from storage or returns an error

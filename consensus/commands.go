@@ -14,13 +14,16 @@
    limitations under the License.
 */
 
-package commands
+package consensus
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/hashicorp/go-msgpack/codec"
 )
+
+var msgpackHandle = &codec.MsgpackHandle{}
 
 // CommandType are commands that affect the state of the cluster,
 // and must go through raft.
@@ -29,39 +32,47 @@ type CommandType uint8
 const (
 	AddEventCommandType CommandType = iota // Commands which modify the database.
 	AddEventsBulkCommandType
-	MetadataSetCommandType
-	MetadataDeleteCommandType
+	MetadataUpdateCommandType
 )
 
-type AddEventCommand struct {
-	Event []byte
+type Command struct {
+	id   CommandType
+	data []byte
 }
 
-type AddEventsBulkCommand struct {
-	Events [][]byte
-}
-
-type MetadataSetCommand struct {
-	Id   uint64
-	Data map[string]string
-}
-
-type MetadataDeleteCommand struct {
-	Id uint64
-}
-
-// msgpackHandle is a shared handle for encoding/decoding of structs
-var msgpackHandle = &codec.MsgpackHandle{}
-
-// Decode is used to encode a MsgPack object with type prefix.
-func Decode(buf []byte, out interface{}) error {
-	return codec.NewDecoder(bytes.NewReader(buf), msgpackHandle).Decode(out)
-}
-
-// Encode is used to encode a MsgPack object with type prefix
-func Encode(t CommandType, cmd interface{}) ([]byte, error) {
+func (c *Command) Encode(cmd interface{}) error {
 	var buf bytes.Buffer
-	buf.WriteByte(uint8(t))
+	buf.WriteByte(uint8(c.id))
 	err := codec.NewEncoder(&buf, msgpackHandle).Encode(cmd)
-	return buf.Bytes(), err
+	if err != nil {
+		return err
+	}
+	c.data = buf.Bytes()
+	return nil
 }
+
+func (c *Command) Decode(out interface{}) error {
+	if c.data == nil {
+		return fmt.Errorf("Command is empty")
+	}
+	if c.id != CommandType(c.data[0]) {
+		return fmt.Errorf("Command type %v is not %v", c.id, CommandType(c.data[0]))
+	}
+	return codec.NewDecoder(bytes.NewReader(c.data[1:]), msgpackHandle).Decode(out)
+}
+
+func NewCommand(t CommandType) *Command {
+	return &Command{
+		id: t,
+	}
+}
+
+func NewCommandFromRaft(data []byte) *Command {
+	return &Command{
+		id:   CommandType(data[0]),
+		data: data,
+	}
+}
+
+// cmd := NewCommand(AddEventCommand)
+// cmd.Encode(meta)

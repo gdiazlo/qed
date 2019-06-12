@@ -78,8 +78,16 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool
 
 	snapshotsCh := make(chan *protocol.Snapshot, 10000)
 	snapshotsDrainer(snapshotsCh)
-
-	node, err := NewRaftBalloon(raftPath, raftAddr(port), clusterId, nodeId, store, snapshotsCh)
+	rbconfig := &Config{
+		NodeId:      nodeId,
+		ClusterId:   clusterId,
+		HTTPAddr:    "http://127.0.0.1:18800",
+		RaftAddr:    raftAddr(port),
+		MgmtAddr:    "http://127.0.0.1:18801",
+		MetricsAddr: "http://127.0.0.1:18802",
+		RaftPath:    raftPath,
+	}
+	node, err := NewRaftBalloon(rbconfig, store, snapshotsCh)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -327,7 +335,7 @@ func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
 	info1, err := r1.Info()
 	spec.NoError(t, err, "Error getting info from node 0")
 
-	spec.Equal(t, info0["meta"], info1["meta"], "Both nodes must have the same metadata.")
+	spec.Equal(t, info0.Nodes, info1.Nodes, "Both nodes must have the same metadata.")
 }
 
 func BenchmarkRaftAdd(b *testing.B) {

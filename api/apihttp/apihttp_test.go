@@ -139,10 +139,13 @@ func (b fakeRaftBalloon) QueryConsistency(start, end uint64) (*balloon.Increment
 	return &ip, nil
 }
 
-func (b fakeRaftBalloon) Info() (consensus.Metadata, error) {
-	return make(consensus.Metadata), nil
+func (b fakeRaftBalloon) Info() (*consensus.Metadata, error) {
+	return new(consensus.Metadata), nil
 }
 
+func (b fakeRaftBalloon) Metadata() error {
+	return nil
+}
 func TestHealthCheckHandler(t *testing.T) {
 	// Create a request to pass to our handler. We don't have any query parameters for now, so we'll
 	// pass 'nil' as the third parameter.
@@ -592,8 +595,16 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*consensus.RaftBalloon,
 
 	snapshotsCh := make(chan *protocol.Snapshot, 10000)
 	snapshotsDrainer(snapshotsCh)
-
-	node, err := consensus.NewRaftBalloon(raftPath, raftAddr(port), clusterId, nodeId, store, snapshotsCh)
+	rbconfig := &consensus.Config{
+		NodeId:      nodeId,
+		ClusterId:   clusterId,
+		HTTPAddr:    "http://127.0.0.1:18800",
+		RaftAddr:    raftAddr(port),
+		MgmtAddr:    "http://127.0.0.1:18801",
+		MetricsAddr: "http://127.0.0.1:18802",
+		RaftPath:    raftPath,
+	}
+	node, err := consensus.NewRaftBalloon(rbconfig, store, snapshotsCh)
 	if err != nil {
 		return nil, nil, err
 	}

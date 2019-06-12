@@ -147,7 +147,16 @@ func NewServer(conf *Config) (*Server, error) {
 	server.sender = NewSender(server.agent, server.signer, 500, 2, 3)
 
 	// Create RaftBalloon
-	server.raftBalloon, err = consensus.NewRaftBalloon(conf.RaftPath, conf.RaftAddr, conf.ClusterId, conf.NodeId, store, server.snapshotsCh)
+	rbconfig := &consensus.Config{
+		NodeId:      conf.NodeId,
+		ClusterId:   conf.ClusterId,
+		HTTPAddr:    conf.HTTPAddr,
+		RaftAddr:    conf.RaftAddr,
+		MgmtAddr:    conf.MgmtAddr,
+		MetricsAddr: conf.MetricsAddr,
+		RaftPath:    conf.RaftPath,
+	}
+	server.raftBalloon, err = consensus.NewRaftBalloon(rbconfig, store, server.snapshotsCh)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +265,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("Server started, but there is no leader becasue: %v", err)
 	}
 
-	return nil
+	return s.raftBalloon.Metadata()
 }
 
 // Stop will close all the channels from the mux servers.
