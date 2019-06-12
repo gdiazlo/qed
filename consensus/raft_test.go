@@ -333,7 +333,7 @@ func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
 	info0, err := r0.Info()
 	spec.NoError(t, err, "Error getting info from node 0")
 	info1, err := r1.Info()
-	spec.NoError(t, err, "Error getting info from node 0")
+	spec.NoError(t, err, "Error getting info from node 1")
 
 	spec.Equal(t, info0.Nodes, info1.Nodes, "Both nodes must have the same metadata.")
 }
