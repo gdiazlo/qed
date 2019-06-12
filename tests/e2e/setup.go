@@ -167,13 +167,13 @@ func newServerSetup(nodeId uint64, tls bool) (func() error, func() error) {
 		return srv.Start()
 	}
 
-	after := func() error {
+	after := func() (err error) {
 		if srv != nil {
-			srv.Stop()
+			err = srv.Stop()
 		}
 		debug.FreeOSMemory()
 		os.RemoveAll(path)
-		return nil
+		return err
 	}
 	return before, after
 }

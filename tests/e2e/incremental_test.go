@@ -31,7 +31,10 @@ func TestIncrementalConsistency(t *testing.T) {
 	before, after := newServerSetup(1, false)
 	let, report := spec.New()
 	defer func() {
-		after()
+		err := after()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 	err := before()

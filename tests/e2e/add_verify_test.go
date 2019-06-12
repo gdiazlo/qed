@@ -68,7 +68,8 @@ func TestAddVerify(t *testing.T) {
 			spec.False(t, proof.ActualVersion > 0 && proof.HistoryProof == nil, "The history proof cannot be empty when version is greater than 0")
 		})
 	})
-	after()
+	err = after()
+	spec.NoError(t, err, "Error closing server")
 	err = before()
 	spec.NoError(t, err, "Error starting server")
 	let(t, "Add two events, verify the first one", func(t *testing.T) {
@@ -104,7 +105,8 @@ func TestAddVerify(t *testing.T) {
 		})
 	})
 
-	after()
+	err = after()
+	spec.NoError(t, err, "Error closing server")
 	err = before()
 	spec.NoError(t, err, "Error starting server")
 	let(t, "Add 10 events, verify event with index i", func(t *testing.T) {
@@ -156,6 +158,6 @@ func TestAddVerify(t *testing.T) {
 		})
 
 	})
-	after()
-
+	err = after()
+	spec.NoError(t, err, "Error closing server")
 }

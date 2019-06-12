@@ -30,7 +30,10 @@ func TestClientToSingleServer(t *testing.T) {
 	b0, a0 := newServerSetup(1, true)
 	let, report := spec.New()
 	defer func() {
-		a0()
+		err := a0()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 
@@ -123,8 +126,14 @@ func TestClientToClusterWithLeaderChange(t *testing.T) {
 	let, report := spec.New()
 	defer func() {
 		// a0()
-		a1()
-		a2()
+		err := a1()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
+		err = a2()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 
@@ -245,8 +254,14 @@ func TestClientToClusterWithBadEndpoint(t *testing.T) {
 
 	let, report := spec.New()
 	defer func() {
-		a0()
-		a1()
+		err := a0()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
+		err = a1()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 

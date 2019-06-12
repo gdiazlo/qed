@@ -32,7 +32,12 @@ import (
 // go test -v -cpuprofile=cpu2.out ./... -run ProfilingStart
 func TestProfilingStart(t *testing.T) {
 	before, after := newServerSetup(1, false)
-	defer after()
+	defer func() {
+		err := after()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
+	}()
 	err := before()
 	spec.NoError(t, err, "Error starting server")
 	<-time.After(10 * time.Second)
@@ -42,7 +47,10 @@ func TestStart(t *testing.T) {
 	before, after := newServerSetup(1, false)
 	let, report := spec.New()
 	defer func() {
-		after()
+		err := after()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 	err := before()
@@ -93,9 +101,18 @@ func TestStartCluster(t *testing.T) {
 	b2, a2 := newServerSetup(3, false)
 	let, report := spec.New()
 	defer func() {
-		a0()
-		a1()
-		a2()
+		err := a0()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
+		err = a1()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
+		err = a2()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 	log.SetLogger("e2e", log.DEBUG)

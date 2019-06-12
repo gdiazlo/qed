@@ -32,7 +32,10 @@ func TestAddBulkAndVerify(t *testing.T) {
 	before, after := newServerSetup(1, false)
 	let, report := spec.New()
 	defer func() {
-		_ = after()
+		err := after()
+		if err != nil {
+			t.Logf("Error closing server: %v", err)
+		}
 		t.Logf(report())
 	}()
 	log.SetLogger("e2e", log.ERROR)
