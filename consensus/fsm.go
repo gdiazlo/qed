@@ -68,6 +68,7 @@ type BalloonFSM struct {
 func NewBalloonFSM(store storage.ManagedStore, hasherF func() hashing.Hasher) (*BalloonFSM, error) {
 	meta := new(Metadata)
 	meta.Nodes = make(map[uint64]*NodeInfo)
+	hasherF = hashing.NewSha256Hasher
 
 	b, err := balloon.NewBalloon(store, hasherF)
 	if err != nil {
@@ -188,7 +189,7 @@ func (fsm *BalloonFSM) apply(e statemachine.Entry) *fsmResponse {
 
 	switch cmd.id {
 	case AddEventCommandType:
-		var eventDigest []byte
+		var eventDigest hashing.Digest
 		if err := cmd.Decode(&eventDigest); err != nil {
 			return &fsmResponse{err: err}
 		}
@@ -200,7 +201,7 @@ func (fsm *BalloonFSM) apply(e statemachine.Entry) *fsmResponse {
 		return &fsmResponse{err: fmt.Errorf("state already applied!: %+v -> %+v", fsm.state, newState)}
 
 	case AddEventsBulkCommandType:
-		var eventDigests [][]byte
+		var eventDigests []hashing.Digest
 		if err := cmd.Decode(&eventDigests); err != nil {
 			return &fsmResponse{err: err}
 		}
@@ -439,7 +440,7 @@ func (fsm *BalloonFSM) applyAdd(event []byte, state *fsmState) *fsmResponse {
 	return &fsmResponse{snapshots: []*balloon.Snapshot{snapshot}}
 }
 
-func (fsm *BalloonFSM) applyAddBulk(events [][]byte, state *fsmState) *fsmResponse {
+func (fsm *BalloonFSM) applyAddBulk(events []hashing.Digest, state *fsmState) *fsmResponse {
 
 	snapshots, mutations, err := fsm.balloon.AddBulk(events)
 	if err != nil {

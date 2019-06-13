@@ -94,6 +94,7 @@ type RaftBalloon struct {
 	snapshotsCh chan *protocol.Snapshot // channel to publish snapshots
 
 	metrics *raftBalloonMetrics
+	hasherF func() hashing.Hasher
 }
 
 // NewRaftBalloon returns a new RaftBalloon.
@@ -116,8 +117,11 @@ func NewRaftBalloon(conf *Config, store storage.ManagedStore, snapshotsCh chan *
 		RaftAddress:    conf.RaftAddr,
 	}
 
+	// Set hashing function
+	hasherF := hashing.NewSha256Hasher
+
 	// Instantiate balloon FSM
-	fsm, err := NewBalloonFSM(store, hashing.NewSha256Hasher)
+	fsm, err := NewBalloonFSM(store, hasherF)
 	if err != nil {
 		return nil, fmt.Errorf("new balloon fsm: %s", err)
 	}
@@ -135,6 +139,7 @@ func NewRaftBalloon(conf *Config, store storage.ManagedStore, snapshotsCh chan *
 		done:           make(chan struct{}),
 		fsm:            fsm,
 		snapshotsCh:    snapshotsCh,
+		hasherF:        hasherF,
 	}
 
 	rb.metrics = newRaftBalloonMetrics(rb)
@@ -354,9 +359,10 @@ func (b *RaftBalloon) RegisterMetrics(registry metrics.Registry) {
 
 func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 	var snapshot []*balloon.Snapshot
+	eventDigest := b.hasherF().Do(event)
 
 	cmd := NewCommand(AddEventCommandType)
-	err := cmd.Encode(event)
+	err := cmd.Encode(eventDigest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode command: %v", err)
 	}
@@ -389,8 +395,14 @@ func (b *RaftBalloon) Add(event []byte) (*balloon.Snapshot, error) {
 
 func (b *RaftBalloon) AddBulk(bulk [][]byte) ([]*balloon.Snapshot, error) {
 
+	// Hash events
+	var eventHashBulk []hashing.Digest
+	for _, event := range bulk {
+		eventHashBulk = append(eventHashBulk, b.hasherF().Do(event))
+	}
 	cmd := NewCommand(AddEventsBulkCommandType)
-	err := cmd.Encode(bulk)
+
+	err := cmd.Encode(eventHashBulk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode command: %v", err)
 	}
