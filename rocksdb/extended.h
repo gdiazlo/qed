@@ -34,6 +34,7 @@ extern "C" {
 
 /* Exported types */
 
+typedef struct rocksdb_writebatch_handler_t rocksdb_writebatch_handler_t;
 typedef struct rocksdb_statistics_t rocksdb_statistics_t;
 typedef struct rocksdb_histogram_data_t rocksdb_histogram_data_t;
 
@@ -65,6 +66,21 @@ extern rocksdb_cache_t* rocksdb_cache_create_lru_with_ratio(
 extern void rocksdb_destruct_handler(void* state);
 
 extern rocksdb_slicetransform_t* rocksdb_slicetransform_create_ext(uintptr_t idx);
+
+/* WriteBatch handler */ 
+
+extern rocksdb_writebatch_handler_t* rocksdb_writebatch_handler_create(
+    void* state,
+    void (*destructor)(void*),
+    void (*log_data)(void*, const char* blob, size_t length));
+
+extern rocksdb_writebatch_handler_t* rocksdb_writebatch_handler_create_ext(uintptr_t idx);
+
+extern void rocksdb_writebatch_handler_destroy(rocksdb_writebatch_handler_t*);
+
+extern void rocksdb_writebatch_iterate_ext(
+    rocksdb_writebatch_t* b, 
+    rocksdb_writebatch_handler_t* h);
 
 /* Statistics */
 
