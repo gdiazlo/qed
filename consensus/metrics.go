@@ -19,7 +19,7 @@ package consensus
 import "github.com/prometheus/client_golang/prometheus"
 
 // namespace is the leading part of all published metrics.
-// const namespace = "qed"
+const namespace = "qed"
 
 // subsystem associated with metrics for raft balloon
 const subSystem = "raft_balloon"
