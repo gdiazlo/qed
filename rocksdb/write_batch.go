@@ -121,8 +121,6 @@ func (wb *WriteBatch) Count() int {
 	return int(C.rocksdb_writebatch_count(wb.c))
 }
 
-<<<<<<< HEAD
-=======
 // Data returns the serialized version of this batch.
 func (wb *WriteBatch) Data() []byte {
 	var cSize C.size_t
@@ -156,7 +154,6 @@ func (wb *WriteBatch) Iterate(handler WriteBatchHandler) {
 	C.rocksdb_writebatch_iterate_ext(wb.c, wb.handler)
 }
 
->>>>>>> 2decf65... Implement bindings for the write batch handler
 // Destroy deallocates the WriteBatch object.
 func (wb *WriteBatch) Destroy() {
 	if wb.handler != nil {
@@ -198,3 +195,4 @@ func rocksdb_writebatch_handler_log_data(idx int, cBlob *C.char, cBlobSize C.siz
 	blob := charToBytes(cBlob, cBlobSize)
 	writeBatchHandlers.Get(idx).(writeBatchHandlerWrapper).handler.LogData(blob)
 }
+

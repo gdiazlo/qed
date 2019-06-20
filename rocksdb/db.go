@@ -415,27 +415,6 @@ func (db *DB) GetUint64PropertyCF(propName string, cf *ColumnFamilyHandle) uint6
 	return uint64(cValue)
 }
 
-<<<<<<< HEAD
-func (db *DB) CompactRange(start, end []byte) {
-	cStart := byteToChar(start)
-	cLimit := byteToChar(end)
-	C.rocksdb_compact_range(db.c, cStart, C.size_t(len(start)), cLimit, C.size_t(len(end)))
-}
-
-func (db *DB) CompactRangeWithOptions(opts *CompactionOptions, start, end []byte) {
-	cStart := byteToChar(start)
-	cLimit := byteToChar(end)
-	C.rocksdb_compact_range_opt(db.c, opts.c, cStart, C.size_t(len(start)), cLimit, C.size_t(len(end)))
-}
-
-// byteToChar returns *C.char from byte slice.
-func byteToChar(b []byte) *C.char {
-	var c *C.char
-	if len(b) > 0 {
-		c = (*C.char)(unsafe.Pointer(&b[0]))
-	}
-	return c
-=======
 // GetLatestSequenceNumber returns the sequence number of the most
 // recent transaction.
 func (db *DB) GetLatestSequenceNumber() uint64 {
@@ -460,5 +439,4 @@ func (db *DB) GetUpdatesSince(seqNum uint64) (*WALIterator, error) {
 		return nil, errors.New(C.GoString(cErr))
 	}
 	return NewNativeWALIterator(unsafe.Pointer(cIter)), nil
->>>>>>> 2decf65... Implement bindings for the write batch handler
 }
