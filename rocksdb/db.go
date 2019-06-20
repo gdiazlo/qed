@@ -68,12 +68,7 @@ func OpenDBForReadOnly(path string, opts *Options, errorIfLogFileExist bool) (*D
 }
 
 // OpenDBColumnFamilies opens a database with the specified column families.
-func OpenDBColumnFamilies(
-	path string,
-	opts *Options,
-	cfNames []string,
-	cfOpts []*Options,
-) (*DB, ColumnFamilyHandles, error) {
+func OpenDBColumnFamilies(path string, opts *Options, cfNames []string, cfOpts []*Options) (*DB, ColumnFamilyHandles, error) {
 
 	numColumnFamilies := len(cfNames)
 	if numColumnFamilies != len(cfOpts) {
@@ -128,13 +123,7 @@ func OpenDBColumnFamilies(
 
 // OpenDBForReadOnlyColumnFamilies opens a database with the specified column
 // families in read-only mode.
-func OpenDBForReadOnlyColumnFamilies(
-	path string,
-	opts *Options,
-	cfNames []string,
-	cfOpts []*Options,
-	errorIfLogFileExist bool,
-) (*DB, ColumnFamilyHandles, error) {
+func OpenDBForReadOnlyColumnFamilies(path string, opts *Options, cfNames []string, cfOpts []*Options, errorIfLogFileExist bool) (*DB, ColumnFamilyHandles, error) {
 
 	numColumnFamilies := len(cfNames)
 	if numColumnFamilies != len(cfOpts) {
