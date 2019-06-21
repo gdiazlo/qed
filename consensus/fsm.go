@@ -25,7 +25,7 @@ import (
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
 
-	"github.com/lni/dragonboat/statemachine"
+	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/prometheus/common/log"
 )
 

@@ -29,8 +29,8 @@ import (
 	metrics_utils "github.com/bbva/qed/testutils/metrics"
 	utilrand "github.com/bbva/qed/testutils/rand"
 	"github.com/bbva/qed/testutils/spec"
-	"github.com/lni/dragonboat"
-	"github.com/lni/dragonboat/logger"
+	"github.com/lni/dragonboat/v3"
+	"github.com/lni/dragonboat/v3/logger"
 )
 
 func init() {

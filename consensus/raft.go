@@ -29,9 +29,9 @@ import (
 	"github.com/bbva/qed/metrics"
 	"github.com/bbva/qed/protocol"
 	"github.com/bbva/qed/storage"
-	"github.com/lni/dragonboat"
-	"github.com/lni/dragonboat/config"
-	"github.com/lni/dragonboat/statemachine"
+	"github.com/lni/dragonboat/v3"
+	"github.com/lni/dragonboat/v3/config"
+	"github.com/lni/dragonboat/v3/statemachine"
 )
 
 const (

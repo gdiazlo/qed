@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lni/dragonboat/logger"
+	"github.com/lni/dragonboat/v3/logger"
 
 	"github.com/bbva/qed/client"
 	"github.com/bbva/qed/crypto"
