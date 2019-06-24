@@ -88,7 +88,7 @@ var (
 )
 
 type Store interface {
-	Mutate(mutations []*Mutation) error
+	Mutate(mutations []*Mutation, metadata []byte) error
 	GetRange(table Table, start, end []byte) (KVRange, error)
 	Get(table Table, key []byte) (*KVPair, error)
 	GetAll(table Table) KVPairReader

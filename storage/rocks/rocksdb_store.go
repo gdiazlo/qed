@@ -310,11 +310,12 @@ func getFsmStateTableOpts() *rocksdb.Options {
 	return opts
 }
 
-func (s *RocksDBStore) Mutate(mutations []*storage.Mutation) error {
+func (s *RocksDBStore) Mutate(mutations []*storage.Mutation, metadata []byte) error {
 	batch := rocksdb.NewWriteBatch()
 	defer batch.Destroy()
 	for _, m := range mutations {
 		batch.PutCF(s.cfHandles[m.Table], m.Key, m.Value)
+		batch.PutLogData(metadata, len(metadata))
 	}
 	err := s.db.Write(s.wo, batch)
 	return err

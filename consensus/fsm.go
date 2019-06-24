@@ -24,6 +24,7 @@ import (
 	"github.com/bbva/qed/balloon"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
+	"github.com/bbva/qed/util"
 
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/prometheus/common/log"
@@ -431,7 +432,7 @@ func (fsm *BalloonFSM) applyAdd(event []byte, state *fsmState) *fsmResponse {
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
-	err = fsm.store.Mutate(mutations)
+	err = fsm.store.Mutate(mutations, util.Uint64AsBytes(state.BalloonVersion))
 	if err != nil {
 		return &fsmResponse{err: err}
 	}
@@ -453,7 +454,7 @@ func (fsm *BalloonFSM) applyAddBulk(events []hashing.Digest, state *fsmState) *f
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
-	err = fsm.store.Mutate(mutations)
+	err = fsm.store.Mutate(mutations, util.Uint64AsBytes(state.BalloonVersion))
 	if err != nil {
 		return &fsmResponse{err: err}
 	}

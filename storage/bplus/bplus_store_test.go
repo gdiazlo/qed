@@ -46,7 +46,9 @@ func TestMutate(t *testing.T) {
 				Key:   test.key,
 				Value: test.value,
 			},
-		})
+		},
+			[]byte{0},
+		)
 		require.Equalf(t, test.expectedError, err, "Error mutating in test: %s", test.testname)
 		_, err = store.Get(test.table, test.key)
 		require.Equalf(t, test.expectedError, err, "Error getting key in test: %s", test.testname)
@@ -73,7 +75,9 @@ func TestGetExistentKey(t *testing.T) {
 		if test.expectedError == nil {
 			err := store.Mutate([]*storage.Mutation{
 				{test.table, test.key, test.value},
-			})
+			},
+				[]byte{0},
+			)
 			require.NoError(t, err)
 		}
 
@@ -108,7 +112,9 @@ func TestGetRange(t *testing.T) {
 	for i := 10; i < 50; i++ {
 		store.Mutate([]*storage.Mutation{
 			{table, []byte{byte(i)}, []byte("Value")},
-		})
+		},
+			[]byte{byte(i)},
+		)
 	}
 
 	for _, test := range testCases {
@@ -141,7 +147,9 @@ func TestGetAll(t *testing.T) {
 		key := util.Uint16AsBytes(i)
 		store.Mutate([]*storage.Mutation{
 			&storage.Mutation{table, key, key},
-		})
+		},
+			[]byte{byte(i)},
+		)
 	}
 
 	for i, c := range testCases {
@@ -177,7 +185,9 @@ func TestGetLast(t *testing.T) {
 			key[5] = byte(table)
 			store.Mutate([]*storage.Mutation{
 				{table, key, key},
-			})
+			},
+				[]byte{byte(i)},
+			)
 		}
 	}
 
@@ -198,7 +208,9 @@ func BenchmarkMutate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		store.Mutate([]*storage.Mutation{
 			{storage.HistoryTable, rand.Bytes(128), []byte("Value")},
-		})
+		},
+			[]byte{byte(i)},
+		)
 	}
 }
 
@@ -215,11 +227,15 @@ func BenchmarkGet(b *testing.B) {
 			key = rand.Bytes(128)
 			store.Mutate([]*storage.Mutation{
 				{storage.HistoryTable, key, []byte("Value")},
-			})
+			},
+				[]byte{byte(i)},
+			)
 		} else {
 			store.Mutate([]*storage.Mutation{
 				{storage.HistoryTable, rand.Bytes(128), []byte("Value")},
-			})
+			},
+				[]byte{byte(i)},
+			)
 		}
 	}
 
@@ -240,7 +256,9 @@ func BenchmarkGetRangeInLargeTree(b *testing.B) {
 	for i := 0; i < N; i++ {
 		store.Mutate([]*storage.Mutation{
 			{storage.HistoryTable, []byte{byte(i)}, []byte("Value")},
-		})
+		},
+			[]byte{byte(i)},
+		)
 	}
 
 	b.ResetTimer()

@@ -34,18 +34,20 @@ func TestMutate(t *testing.T) {
 	defer closeF()
 
 	tests := []struct {
-		testname      string
-		table         storage.Table
-		key, value    []byte
-		expectedError error
+		testname            string
+		table               storage.Table
+		key, value, version []byte
+		expectedError       error
 	}{
-		{"Mutate Key=Value", storage.HistoryTable, []byte("Key"), []byte("Value"), nil},
+		{"Mutate Key=Value", storage.HistoryTable, []byte("Key"), []byte("Value"), []byte("Version"), nil},
 	}
 
 	for _, test := range tests {
 		err := store.Mutate([]*storage.Mutation{
 			{Table: test.table, Key: test.key, Value: test.value},
-		})
+		},
+			test.version,
+		)
 		require.Equalf(t, test.expectedError, err, "Error mutating in test: %s", test.testname)
 		_, err = store.Get(test.table, test.key)
 		require.Equalf(t, test.expectedError, err, "Error getting key in test: %s", test.testname)
@@ -57,14 +59,14 @@ func TestGetExistentKey(t *testing.T) {
 	defer closeF()
 
 	testCases := []struct {
-		table         storage.Table
-		key, value    []byte
-		expectedError error
+		table               storage.Table
+		key, value, version []byte
+		expectedError       error
 	}{
-		{storage.HistoryTable, []byte("Key1"), []byte("Value1"), nil},
-		{storage.HistoryTable, []byte("Key2"), []byte("Value2"), nil},
-		{storage.HyperTable, []byte("Key3"), []byte("Value3"), nil},
-		{storage.HyperTable, []byte("Key4"), []byte("Value4"), storage.ErrKeyNotFound},
+		{storage.HistoryTable, []byte("Key1"), []byte("Value1"), []byte("Version"), nil},
+		{storage.HistoryTable, []byte("Key2"), []byte("Value2"), []byte("Version"), nil},
+		{storage.HyperTable, []byte("Key3"), []byte("Value3"), []byte("Version"), nil},
+		{storage.HyperTable, []byte("Key4"), []byte("Value4"), []byte("Version"), storage.ErrKeyNotFound},
 	}
 
 	for _, test := range testCases {
@@ -75,7 +77,9 @@ func TestGetExistentKey(t *testing.T) {
 					Key:   test.key,
 					Value: test.value,
 				},
-			})
+			},
+				test.version,
+			)
 			require.NoError(t, err)
 		}
 
@@ -99,20 +103,23 @@ func TestGetRange(t *testing.T) {
 	var testCases = []struct {
 		size       int
 		start, end byte
+		version    []byte
 	}{
-		{40, 10, 50},
-		{0, 1, 9},
-		{11, 1, 20},
-		{10, 40, 60},
-		{0, 60, 100},
-		{0, 20, 10},
+		{40, 10, 50, []byte{0}},
+		{0, 1, 9, []byte{0}},
+		{11, 1, 20, []byte{0}},
+		{10, 40, 60, []byte{0}},
+		{0, 60, 100, []byte{0}},
+		{0, 20, 10, []byte{0}},
 	}
 
 	table := storage.HistoryTable
 	for i := 10; i < 50; i++ {
 		store.Mutate([]*storage.Mutation{
 			{table, []byte{byte(i)}, []byte("Value")},
-		})
+		},
+			[]byte{byte(i)},
+		)
 	}
 
 	for _, test := range testCases {
@@ -145,7 +152,8 @@ func TestGetAll(t *testing.T) {
 		key := util.Uint16AsBytes(i)
 		store.Mutate([]*storage.Mutation{
 			{table, key, key},
-		})
+		},
+			[]byte{byte(i)})
 	}
 
 	for i, c := range testCases {
@@ -180,7 +188,8 @@ func TestGetLast(t *testing.T) {
 			key := util.Uint64AsBytes(i)
 			store.Mutate([]*storage.Mutation{
 				{table, key, key},
-			})
+			},
+				[]byte{byte(i)})
 		}
 	}
 
@@ -204,7 +213,9 @@ func TestBackupLoad(t *testing.T) {
 			key := util.Uint64AsBytes(i)
 			store.Mutate([]*storage.Mutation{
 				{Table: table, Key: key, Value: key},
-			})
+			},
+				[]byte{byte(i)},
+			)
 		}
 	}
 
