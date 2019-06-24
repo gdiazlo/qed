@@ -353,8 +353,9 @@ func BenchmarkRaftAdd(b *testing.B) {
 	spec.NoError(b, err, "Error waiting for leader")
 	fmt.Println("Leader ID A: ", id)
 
-	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
-	b.N = 100000
+	// b.N should be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
+	// b.N should be always greater than SnapshotEntries value to avoid taking snapshot while closing the DB.
+	b.N = 110000
 	b.ResetTimer()
 	b.SetParallelism(100)
 	b.RunParallel(func(pb *testing.PB) {
@@ -384,7 +385,8 @@ func BenchmarkRaftAddBulk(b *testing.B) {
 	fmt.Println("Leader ID A: ", id)
 
 	// b.N shoul be eq or greater than 500k to avoid benchmark framework spreading more than one goroutine.
-	b.N = 2000000
+	// b.N should be always greater than SnapshotEntries value to avoid taking snapshot while closing the DB.
+	b.N = 110000
 	b.ResetTimer()
 	b.SetParallelism(100)
 	b.RunParallel(func(pb *testing.PB) {
