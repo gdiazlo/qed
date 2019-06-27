@@ -99,8 +99,11 @@ type Store interface {
 type ManagedStore interface {
 	Store
 	Backup(w io.Writer, until uint64) error
+	FetchSnapshot(w io.Writer, snapshotID uint64) error
+	LoadSnapshot(r io.Reader, since uint64) error
 	Snapshot() (uint64, error)
 	Load(r io.Reader) error
+	LastWALSequenceNumber() uint64
 	metrics.Registerer
 }
 
