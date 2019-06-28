@@ -315,7 +315,9 @@ func getFsmStateTableOpts() *rocksdb.Options {
 func (s *RocksDBStore) Mutate(mutations []*storage.Mutation, metadata []byte) error {
 	batch := rocksdb.NewWriteBatch()
 	defer batch.Destroy()	
-	batch.PutLogData(metadata, len(metadata))	
+	// IMPORTANT: This line must go before the PutCF. For some reason, if we set it after,
+	// we cannot retrieve the metadata later with a writebatch handler.
+	batch.PutLogData(metadata, len(metadata)) 
 	for _, m := range mutations {
 		batch.PutCF(s.cfHandles[m.Table], m.Key, m.Value)
 	}	
@@ -473,14 +475,6 @@ func (s *RocksDBStore) Snapshot() (uint64, error) {
 	return id, nil
 }
 
-// Snapshot2 takes a snapshot of the store, and returns the
-// sequence number of the last applied batch. The sequence
-// number can be used as upper limit when fetching transactions
-// from the WAL.
-func (s *RocksDBStore) Snapshot2() (uint64, error) {
-	return s.db.GetLatestSequenceNumber(), nil
-}
-
 // Backup dumps a protobuf-encoded list of all entries in the database into the
 // given writer, that are newer than the specified version.
 func (s *RocksDBStore) Backup(w io.Writer, id uint64) error {
@@ -544,22 +538,25 @@ func (s *RocksDBStore) Backup(w io.Writer, id uint64) error {
 	return nil
 }
 
-func (s *RocksDBStore) FetchSnapshot(w io.Writer, until uint64) error {
+// FetchSnapshot fetches all WAL transactions from the first available
+// seq_num to the last one specified in the lastSeqNum parameter, and dumps
+// them to the given writer.
+func (s *RocksDBStore) FetchSnapshot(w io.Writer, lastSeqNum uint64) error {
 
-	walIt, err := s.db.GetUpdatesSince(0) // we start on the first available seq_num
+	it, err := s.db.GetUpdatesSince(0) // we start on the first available seq_num
 	if err != nil {
 		return err
 	}
-	defer walIt.Close()
+	defer it.Close()
 
 	//extractor := rocksdb.NewLogDataExtractor("version")
 	//defer extractor.Destroy()
 
-	for ; walIt.Valid(); walIt.Next() {
+	for ; it.Valid(); it.Next() {
 
-		batch, seqNum := walIt.GetBatch()
+		batch, seqNum := it.GetBatch()
 		defer batch.Destroy()
-		if seqNum > until {
+		if seqNum > lastSeqNum {
 			break
 		}
 
@@ -674,7 +671,9 @@ func (s *RocksDBStore) Load(r io.Reader) error {
 }
 
 // LastWALSequenceNumber returns the sequence number of the
-// last transaction applied to the WAL.
+// last transaction applied to the WAL. This sequence
+// number can be used as upper limit when fetching transactions
+// from the WAL.
 func (s *RocksDBStore) LastWALSequenceNumber() uint64 {
 	return s.db.GetLatestSequenceNumber()
 }
