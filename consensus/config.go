@@ -38,6 +38,6 @@ type Config struct {
 	// Metrics bind address/port.
 	MetricsAddr string
 
-	// WAlPath
+	// WAL path
 	RaftPath string
 }

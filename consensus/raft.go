@@ -107,7 +107,7 @@ func NewRaftBalloon(conf *Config, store storage.ManagedStore, snapshotsCh chan *
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
 		SnapshotEntries:    100000, // TODO set this to the "size of a complete SST file"-equivalent
-		CompactionOverhead: 5,
+		CompactionOverhead: 0,
 	}
 
 	nodeHostConfig := config.NodeHostConfig{

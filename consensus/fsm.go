@@ -282,18 +282,15 @@ func (fsm *BalloonFSM) Sync() error {
 // PrepareSnapshot returns an error when there is unrecoverable error for
 // preparing the snapshot.
 type snapshotState struct {
-	snapshotId uint64
+	lastSeqNum uint64
 	state      *fsmState
 }
 
 func (fsm *BalloonFSM) PrepareSnapshot() (interface{}, error) {
-	snapshotId, err := fsm.store.Snapshot()
-	if err != nil {
-		return nil, err
-	}
+	seqNum := fsm.store.LastWALSequenceNumber()
+	log.Infof("Preparing snapshot (last seq num: %d)...", seqNum)
 	state, err := loadState(fsm.store)
-
-	return &snapshotState{snapshotId, state}, err
+	return &snapshotState{seqNum, state}, err
 }
 
 // SaveSnapshot saves the point in time state of the IOnDiskStateMachine
@@ -330,16 +327,19 @@ func (fsm *BalloonFSM) PrepareSnapshot() (interface{}, error) {
 // The SaveSnapshot method is allowed to be invoked when there is concurrent
 // call to the Update method.
 func (fsm *BalloonFSM) SaveSnapshot(state interface{}, w io.Writer, abort <-chan struct{}) error {
-	var done chan struct{}
+	done := make(chan struct{})
 	var err error
 	snapshotState := state.(*snapshotState)
+	
+	log.Infof("Saving snapshot until seq num: %d", snapshotState.lastSeqNum)
 
 	go func() {
 		defer func() { close(done) }()
-		if err = fsm.store.Backup(w, snapshotState.snapshotId); err != nil {
+		if err = fsm.store.FetchSnapshot(w, snapshotState.lastSeqNum); err != nil {
 			log.Infof("fsm.SaveSnapshot(): Error saving snapshot %v", err)
 			return
 		}
+		log.Infof("Snapshot saved.")
 	}()
 
 	for {
@@ -378,14 +378,19 @@ func (fsm *BalloonFSM) SaveSnapshot(state interface{}, w io.Writer, abort <-chan
 // RecoverFromSnapshot is invoked when the node's progress is significantly
 // behind its leader.
 func (fsm *BalloonFSM) RecoverFromSnapshot(r io.Reader, abort <-chan struct{}) error {
-	var done chan struct{}
+	done := make(chan struct{})
 	var err error
+
+	log.Infof("Recovering from snapshot (last applied version: %d)...", fsm.state.BalloonVersion)
 
 	go func() {
 		defer func() { close(done) }()
-		if err = fsm.store.Load(r); err != nil {
+		if err = fsm.store.LoadSnapshot(r, fsm.state.BalloonVersion); err != nil {
 			return
 		}
+		fsm.balloon.RefreshVersion()
+		fsm.state.BalloonVersion = fsm.balloon.Version()
+		log.Infof("Recovering finished, new version: %d", fsm.state.BalloonVersion)
 	}()
 
 	for {

@@ -66,10 +66,15 @@ type RocksDBStore struct {
 type Options struct {
 	Path             string
 	EnableStatistics bool
+	WALSizeLimitMB uint64
 }
 
 func NewRocksDBStore(path string) (*RocksDBStore, error) {
-	return NewRocksDBStoreOpts(&Options{Path: path, EnableStatistics: true})
+	return NewRocksDBStoreOpts(&Options{
+		Path: path, 
+		EnableStatistics: true, 
+		WALSizeLimitMB: 1 << 20,
+	})
 }
 
 func NewRocksDBStoreOpts(opts *Options) (*RocksDBStore, error) {
@@ -91,7 +96,7 @@ func NewRocksDBStoreOpts(opts *Options) (*RocksDBStore, error) {
 	globalOpts := rocksdb.NewDefaultOptions()
 	globalOpts.SetCreateIfMissing(true)
 	globalOpts.SetCreateIfMissingColumnFamilies(true)
-	globalOpts.SetWalSizeLimitMb(1 << 20)
+	globalOpts.SetWalSizeLimitMb(opts.WALSizeLimitMB)
 	//globalOpts.SetMaxOpenFiles(1000)
 	globalOpts.SetEnv(env)
 	// We build a LRU cache with a high pool ratio of 0.4 (40%). The lower pool

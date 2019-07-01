@@ -57,9 +57,9 @@ func snapshotsDrainer(snapshotsCh chan *protocol.Snapshot) {
 	}()
 }
 
-func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool), error) {
+func newNode(port, nodeID, clusterID uint64) (*RaftBalloon, func(bool), error) {
 
-	storePath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/db", clusterId, nodeId)
+	storePath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/db", clusterID, nodeID)
 
 	err := os.MkdirAll(storePath, os.FileMode(0755))
 	if err != nil {
@@ -70,7 +70,7 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool
 		return nil, nil, err
 	}
 
-	raftPath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/raft", clusterId, nodeId)
+	raftPath := fmt.Sprintf("/var/tmp/raft-test-cluster%d/node%d/raft", clusterID, nodeID)
 	err = os.MkdirAll(raftPath, os.FileMode(0755))
 	if err != nil {
 		return nil, nil, err
@@ -78,9 +78,10 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool
 
 	snapshotsCh := make(chan *protocol.Snapshot, 10000)
 	snapshotsDrainer(snapshotsCh)
+	
 	rbconfig := &Config{
-		NodeId:      nodeId,
-		ClusterId:   clusterId,
+		NodeId:      nodeID,
+		ClusterId:   clusterID,
 		HTTPAddr:    "http://127.0.0.1:18800",
 		RaftAddr:    raftAddr(port),
 		MgmtAddr:    "http://127.0.0.1:18801",
@@ -106,11 +107,11 @@ func newNode(join bool, port, nodeId, clusterId uint64) (*RaftBalloon, func(bool
 
 }
 
-func Test_Raft_IsLeader(t *testing.T) {
+func TestRaftIsLeader(t *testing.T) {
 
 	log.SetLogger("Test_Raft_IsLeader", log.SILENT)
 
-	r, clean, err := newNode(false, 0, 100, 100)
+	r, clean, err := newNode(0, 100, 100)
 	spec.NoError(t, err, "Error creating testing node")
 	defer clean(true)
 
@@ -129,9 +130,9 @@ func Test_Raft_IsLeader(t *testing.T) {
 
 }
 
-func TestRaft_OpenStore_CloseSingleNode(t *testing.T) {
+func TestRaftOpenStoreCloseSingleNode(t *testing.T) {
 
-	r, clean, err := newNode(false, 0, 200, 100)
+	r, clean, err := newNode(0, 200, 100)
 	spec.NoError(t, err, "Error creating testing node")
 	defer clean(true)
 
@@ -149,11 +150,11 @@ func TestRaft_OpenStore_CloseSingleNode(t *testing.T) {
 
 }
 
-func Test_Raft_MultiNode_Join(t *testing.T) {
+func TestRaftMultiNodeJoin(t *testing.T) {
 
 	log.SetLogger("Test_Raft_MultiNodeJoin", log.SILENT)
 
-	r0, clean0, err := newNode(false, 0, 100, 200)
+	r0, clean0, err := newNode(0, 100, 200)
 	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
@@ -167,7 +168,7 @@ func Test_Raft_MultiNode_Join(t *testing.T) {
 	_, err = r0.WaitForLeader(10 * time.Second)
 	spec.NoError(t, err, "Error waiting for leader")
 
-	r1, clean1, err := newNode(false, 1, 200, 200)
+	r1, clean1, err := newNode(1, 200, 200)
 	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
@@ -188,9 +189,9 @@ func Test_Raft_MultiNode_Join(t *testing.T) {
 	spec.Equal(t, len(n0), 2, "Number of nodes must be 2")
 }
 
-func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
+func TestRaftMultiNodeJoinRemove(t *testing.T) {
 
-	r0, clean0, err := newNode(false, 0, 100, 300)
+	r0, clean0, err := newNode(0, 100, 300)
 	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
@@ -204,7 +205,7 @@ func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 	_, err = r0.WaitForLeader(10 * time.Second)
 	spec.NoError(t, err, "Error waiting for leader")
 
-	r1, clean1, err := newNode(false, 1, 200, 300)
+	r1, clean1, err := newNode(1, 200, 300)
 	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
@@ -247,8 +248,8 @@ func Test_Raft_MultiNode_JoinRemove(t *testing.T) {
 
 }
 
-func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
-	r0, clean0, err := newNode(false, 0, 100, 400)
+func TestRaftSingleNodeSnapshotOnDisk(t *testing.T) {
+	r0, clean0, err := newNode(0, 100, 400)
 	spec.NoError(t, err, "Error creating raft node 0")
 
 	err = r0.Open(true)
@@ -259,7 +260,7 @@ func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
 
 	// Add event
 	rand.Seed(42)
-	expectedBalloonVersion := uint64(rand.Intn(50))
+	expectedBalloonVersion := uint64(rand.Intn(100))
 	for i := uint64(0); i < expectedBalloonVersion; i++ {
 		_, err = r0.Add([]byte(fmt.Sprintf("Test Event %d", i)))
 		spec.NoError(t, err, "Error adding event to raft node 0")
@@ -271,13 +272,15 @@ func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
 	_, err = waitForResp(resp, 5*time.Second)
 	spec.NoError(t, err, "Error in snapshot request")
 
+	time.Sleep(5000 * time.Millisecond)
+
 	// close node
 	err = r0.Close(true)
 	spec.NoError(t, err, "Error closing raft node 0")
 	clean0(false)
 
 	// restart node and check if recovers from snapshot
-	r1, clean1, err := newNode(false, 0, 100, 400)
+	r1, clean1, err := newNode(0, 100, 400)
 	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err = r1.Close(true)
@@ -295,11 +298,63 @@ func Test_Raft_SingleNode_SnapshotOnDisk(t *testing.T) {
 
 }
 
-func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
+func TestRaftMultiNodeSnapshot(t *testing.T) {
+
+	log.SetLogger("TestRaftMultiNodeSnapshot", log.INFO)
+
+	// start node 0
+	r0, clean0, err := newNode(0, 100, 100)
+	spec.NoError(t, err, "Error creating raft node 0")
+	defer func() {
+		err = r0.Close(true)
+		spec.NoError(t, err, "Error closing raft node 1")
+		clean0(true)
+	}()
+
+	err = r0.Open(true)
+	spec.NoError(t, err, "Error opening raft node 0")
+
+	_, err = r0.WaitForLeader(10 * time.Second)
+	spec.NoError(t, err, "Error waiting for leader in raft node 0")
+
+	// Add event
+	rand.Seed(42)
+	expectedBalloonVersion := uint64(200000)
+	for i := uint64(0); i < expectedBalloonVersion; i++ {
+		_, err = r0.Add([]byte(fmt.Sprintf("Test Event %d", i)))
+		spec.NoError(t, err, "Error adding event to raft node 0")
+	}
+
+	// start node 1 and join
+	r1, clean1, err := newNode(1, 200, 100)
+	spec.NoError(t, err, "Error creating raft node 1")
+	defer func() {
+		err = r1.Close(true)
+		spec.NoError(t, err, "Error closing raft node 1")
+		clean1(true)
+	}()
+
+	err = r1.Open(false)
+	spec.NoError(t, err, "Error opening raft node 1")
+
+	err = r0.Join(200, 100, r1.Addr())
+	spec.NoError(t, err, "Error joining raft node 1")
+
+	_, err = r1.WaitForLeader(10 * time.Second)
+	spec.NoError(t, err, "Error waiting for leader in raft node 1")
+
+	time.Sleep(5* time.Second)
+
+	// Compare balloon versions
+	spec.Equal(t, expectedBalloonVersion, r1.fsm.balloon.Version(), "Error in state recovery from snapshot")
+
+}
+
+func TestRaftMultiNodeWithMetadata(t *testing.T) {
 
 	log.SetLogger("Test_Raft_MultiNode_WithMetadata", log.SILENT)
 
-	r0, clean0, err := newNode(false, 2, 100, 200)
+	r0, clean0, err := newNode(2, 100, 200)
 	spec.NoError(t, err, "Error creating raft node 0")
 	defer func() {
 		err := r0.Close(true)
@@ -313,7 +368,7 @@ func Test_Raft_MultiNode_WithMetadata(t *testing.T) {
 	_, err = r0.WaitForLeader(10 * time.Second)
 	spec.NoError(t, err, "Error waiting for leader")
 
-	r1, clean1, err := newNode(false, 3, 200, 200)
+	r1, clean1, err := newNode(3, 200, 200)
 	spec.NoError(t, err, "Error creating raft node 1")
 	defer func() {
 		err := r1.Close(true)
@@ -342,7 +397,7 @@ func BenchmarkRaftAdd(b *testing.B) {
 
 	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
 
-	raftNodeA, clean, err := newNode(false, 0, 1, 1)
+	raftNodeA, clean, err := newNode(0, 1, 1)
 	spec.NoError(b, err, "Error creating testing node")
 	defer clean(true)
 
@@ -373,7 +428,7 @@ func BenchmarkRaftAddBulk(b *testing.B) {
 
 	log.SetLogger("BenchmarkRaftAdd", log.SILENT)
 
-	raftNode, _, err := newNode(false, 0, 1, 1)
+	raftNode, _, err := newNode(0, 1, 1)
 	spec.NoError(b, err, "Error creating testing node")
 	// defer clean()
 
