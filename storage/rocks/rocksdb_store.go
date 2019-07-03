@@ -27,7 +27,6 @@ import (
 	"github.com/bbva/qed/rocksdb"
 	"github.com/bbva/qed/storage"
 	"github.com/bbva/qed/storage/pb"
-	"github.com/bbva/qed/util"
 )
 
 type RocksDBStore struct {
@@ -66,14 +65,14 @@ type RocksDBStore struct {
 type Options struct {
 	Path             string
 	EnableStatistics bool
-	WALSizeLimitMB uint64
+	WALSizeLimitMB   uint64
 }
 
 func NewRocksDBStore(path string) (*RocksDBStore, error) {
 	return NewRocksDBStoreOpts(&Options{
-		Path: path, 
-		EnableStatistics: true, 
-		WALSizeLimitMB: 1 << 20,
+		Path:             path,
+		EnableStatistics: true,
+		WALSizeLimitMB:   1 << 20,
 	})
 }
 
@@ -319,15 +318,14 @@ func getFsmStateTableOpts() *rocksdb.Options {
 
 func (s *RocksDBStore) Mutate(mutations []*storage.Mutation, metadata []byte) error {
 	batch := rocksdb.NewWriteBatch()
-	defer batch.Destroy()	
+	defer batch.Destroy()
 	// IMPORTANT: This line must go before the PutCF. For some reason, if we set it after,
 	// we cannot retrieve the metadata later with a writebatch handler.
-	batch.PutLogData(metadata, len(metadata)) 
+	batch.PutLogData(metadata, len(metadata))
 	for _, m := range mutations {
 		batch.PutCF(s.cfHandles[m.Table], m.Key, m.Value)
-	}	
-	err := s.db.Write(s.wo, batch)
-	return err
+	}
+	return s.db.Write(s.wo, batch)
 }
 
 func (s *RocksDBStore) Get(table storage.Table, key []byte) (*storage.KVPair, error) {
@@ -554,9 +552,6 @@ func (s *RocksDBStore) FetchSnapshot(w io.Writer, lastSeqNum uint64) error {
 	}
 	defer it.Close()
 
-	//extractor := rocksdb.NewLogDataExtractor("version")
-	//defer extractor.Destroy()
-
 	for ; it.Valid(); it.Next() {
 
 		batch, seqNum := it.GetBatch()
@@ -564,9 +559,6 @@ func (s *RocksDBStore) FetchSnapshot(w io.Writer, lastSeqNum uint64) error {
 		if seqNum > lastSeqNum {
 			break
 		}
-
-		//fmt.Println(batch.Data(), seqNum)
-		//fmt.Println(batch.GetLogData(extractor))
 
 		batchRaw := batch.Data()
 		if err := binary.Write(w, binary.LittleEndian, uint64(len(batchRaw))); err != nil {
@@ -580,16 +572,15 @@ func (s *RocksDBStore) FetchSnapshot(w io.Writer, lastSeqNum uint64) error {
 }
 
 // LoadSnapshot reads a list of serialized batches from a reader,
-// rehydrates them and write to the database if they are ahead
-// the version specified with the parameter.
+// rehydrates them and write to the database if they fulfill the validation
+// condition specified as parameter.
 // This method should be called on a database that is not running
 // any other concurrent transactions while it is running.
-func (s *RocksDBStore) LoadSnapshot(r io.Reader, lastVersion uint64) error {
+func (s *RocksDBStore) LoadSnapshot(r io.Reader, valid storage.ValidateF) error {
 
 	wo := rocksdb.NewDefaultWriteOptions()
 	br := bufio.NewReaderSize(r, 16<<10)
 
-	versionBytes := util.Uint64AsBytes(lastVersion)
 	extractor := rocksdb.NewLogDataExtractor("version")
 	defer extractor.Destroy()
 
@@ -611,13 +602,20 @@ func (s *RocksDBStore) LoadSnapshot(r io.Reader, lastVersion uint64) error {
 		defer batch.Destroy()
 
 		blob := batch.GetLogData(extractor)
-		// skip transactions behind the last version
-		if bytes.Compare(versionBytes, blob) <= 0 {
+
+		ok, err := valid(blob)
+		if err != nil {
+			return err
+		}
+
+		// apply only valid transactions
+		if ok {
 			err = s.db.Write(wo, batch)
 			if err != nil {
 				return nil
 			}
 		}
+
 	}
 
 	return nil

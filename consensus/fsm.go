@@ -17,6 +17,7 @@
 package consensus
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -24,7 +25,6 @@ import (
 	"github.com/bbva/qed/balloon"
 	"github.com/bbva/qed/hashing"
 	"github.com/bbva/qed/storage"
-	"github.com/bbva/qed/util"
 
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/prometheus/common/log"
@@ -330,7 +330,7 @@ func (fsm *BalloonFSM) SaveSnapshot(state interface{}, w io.Writer, abort <-chan
 	done := make(chan struct{})
 	var err error
 	snapshotState := state.(*snapshotState)
-	
+
 	log.Infof("Saving snapshot until seq num: %d", snapshotState.lastSeqNum)
 
 	go func() {
@@ -383,9 +383,30 @@ func (fsm *BalloonFSM) RecoverFromSnapshot(r io.Reader, abort <-chan struct{}) e
 
 	log.Infof("Recovering from snapshot (last applied version: %d)...", fsm.state.BalloonVersion)
 
+	validateF := func(lastVersion uint64) storage.ValidateF {
+		lastAppliedVersion := lastVersion
+		return func(meta []byte) (bool, error) {
+			var metadata VersionMetadata
+			err := decodeMsgPack(meta, &metadata)
+			if err != nil {
+				return false, nil
+			}
+			if metadata.PreviousVersion != lastAppliedVersion {
+				log.Infof("There is a gap between the last applied version and the new transaction version. Backup needed to recover.")
+				return false, errors.New("Gap found between versions")
+			}
+			if metadata.NewVersion <= lastAppliedVersion {
+				// apply only those who are ahead the version specified with the parameter.
+				return false, nil
+			}
+			lastAppliedVersion = metadata.NewVersion
+			return true, nil
+		}
+	}
+
 	go func() {
 		defer func() { close(done) }()
-		if err = fsm.store.LoadSnapshot(r, fsm.state.BalloonVersion); err != nil {
+		if err = fsm.store.LoadSnapshot(r, validateF(fsm.state.BalloonVersion)); err != nil {
 			return
 		}
 		fsm.balloon.RefreshVersion()
@@ -437,7 +458,17 @@ func (fsm *BalloonFSM) applyAdd(event []byte, state *fsmState) *fsmResponse {
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
-	err = fsm.store.Mutate(mutations, util.Uint64AsBytes(state.BalloonVersion))
+
+	metadata := &VersionMetadata{
+		PreviousVersion: fsm.state.BalloonVersion,
+		NewVersion:      state.BalloonVersion,
+	}
+	metaBuff, err := encodeMsgPack(metadata)
+	if err != nil {
+		return &fsmResponse{err: err}
+	}
+
+	err = fsm.store.Mutate(mutations, metaBuff.Bytes())
 	if err != nil {
 		return &fsmResponse{err: err}
 	}
@@ -459,7 +490,17 @@ func (fsm *BalloonFSM) applyAddBulk(events []hashing.Digest, state *fsmState) *f
 	}
 
 	mutations = append(mutations, storage.NewMutation(storage.FSMStateTable, storage.FSMStateTableKey, stateBuff.Bytes()))
-	err = fsm.store.Mutate(mutations, util.Uint64AsBytes(state.BalloonVersion))
+
+	metadata := &VersionMetadata{
+		PreviousVersion: fsm.state.BalloonVersion,
+		NewVersion:      state.BalloonVersion,
+	}
+	metaBuff, err := encodeMsgPack(metadata)
+	if err != nil {
+		return &fsmResponse{err: err}
+	}
+
+	err = fsm.store.Mutate(mutations, metaBuff.Bytes())
 	if err != nil {
 		return &fsmResponse{err: err}
 	}
@@ -502,4 +543,9 @@ func (fsm *BalloonFSM) QueryMembership(event []byte) (*balloon.MembershipProof, 
 
 func (fsm *BalloonFSM) QueryConsistency(start, end uint64) (*balloon.IncrementalProof, error) {
 	return fsm.balloon.QueryConsistency(start, end)
+}
+
+type VersionMetadata struct {
+	PreviousVersion uint64
+	NewVersion      uint64
 }

@@ -78,7 +78,7 @@ func newNode(port, nodeID, clusterID uint64) (*RaftBalloon, func(bool), error) {
 
 	snapshotsCh := make(chan *protocol.Snapshot, 10000)
 	snapshotsDrainer(snapshotsCh)
-	
+
 	rbconfig := &Config{
 		NodeId:      nodeID,
 		ClusterId:   clusterID,
@@ -343,7 +343,7 @@ func TestRaftMultiNodeSnapshot(t *testing.T) {
 	_, err = r1.WaitForLeader(10 * time.Second)
 	spec.NoError(t, err, "Error waiting for leader in raft node 1")
 
-	time.Sleep(5* time.Second)
+	time.Sleep(10 * time.Second)
 
 	// Compare balloon versions
 	spec.Equal(t, expectedBalloonVersion, r1.fsm.balloon.Version(), "Error in state recovery from snapshot")
