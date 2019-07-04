@@ -391,8 +391,8 @@ func (fsm *BalloonFSM) RecoverFromSnapshot(r io.Reader, abort <-chan struct{}) e
 			if err != nil {
 				return false, nil
 			}
-			if metadata.PreviousVersion != lastAppliedVersion {
-				log.Infof("There is a gap between the last applied version and the new transaction version. Backup needed to recover.")
+			if metadata.PreviousVersion > lastAppliedVersion {
+				log.Infof("Gap found between the last applied version [%d] and the new transaction version [%d]. Backup needed to recover.", lastAppliedVersion, metadata.PreviousVersion)
 				return false, errors.New("Gap found between versions")
 			}
 			if metadata.NewVersion <= lastAppliedVersion {
